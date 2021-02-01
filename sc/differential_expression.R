@@ -78,7 +78,7 @@ dim(progenitor.deg)
 head(progenitor.deg)
 
 ## Settings
-n_top_deg <- 50
+n_top_deg <- 80
 
 progenitor.mtx <- seurat@assays$integrated@scale.data[
         rownames(progenitor.deg)[1:n_top_deg],
@@ -90,11 +90,12 @@ col_df <- select(seurat@meta.data,
                  progenitor_type,
                  plate_number,
                  disease_state, 
-                 bacteria_attached,
-                 treatment)
+                 bacteria_attached)
 head(col_df)
 col_anns <- list(progenitor_type=c(CDP='steelblue',
-                                   MDP='salmon'))
+                                   MDP='salmon'),
+                 bacteria_attached=c(`-`='red',
+                                     `+`='yellowgreen'))
 pheatmap(scale(progenitor.mtx), 
          show_colnames = FALSE, 
          annotation_col = col_df,
@@ -122,6 +123,10 @@ seurat$infection_status <- sapply(
 table(seurat$treatment,
       seurat$infection_status)
 
+#saveRDS(seurat,
+#        file = path2seurat,
+#        compress = TRUE)
+
 ################################################################
 ##                                                            ##
 ##            Differential Expression Analysis                ##
@@ -134,6 +139,11 @@ dir.create('data/dea/')
 ###############################################################
 ## MDPs
 
+seurat$infection_status <- factor(seurat$infection_status,
+                                  levels = c('Infected',
+                                             'Bystander',
+                                             'Control'))
+
 ## 1hr
 ##  * A vs B pos
 ## Infected vs control
@@ -141,7 +151,7 @@ degs.infVsCtrl.1h <- dea(
   seurat = subset(seurat, 
                   disease_state == 'Yesinia 1h post-infection' &
                     progenitor_type == 'MDP' & 
-                    infection_status %in% c('Infected', 'Bystander')),
+                    infection_status %in% c('Infected', 'Control')),
   ident = 'Infected',
   group_by = 'infection_status'
 )
@@ -183,9 +193,9 @@ degs.infVsBys.1h <- dea(
   ident = 'Infected',
   group_by = 'infection_status'
 )
-head(degs.infVsCtrl.1h, n = 10)
-dim(degs.infVsCtrl.1h)
-write.table(degs.infVsCtrl.1h,
+head(degs.infVsBys.1h, n = 10)
+dim(degs.infVsBys.1h)
+write.table(degs.infVsBys.1h,
             file = gzfile('data/dea/degs.mdp.infVsBys.1h.tsv.gz'),
             sep = '\t', 
             quote = FALSE, 
@@ -242,9 +252,9 @@ degs.infVsBys.24h <- dea(
   ident = 'Infected',
   group_by = 'infection_status'
 )
-head(degs.infVsCtrl.24h, n = 10)
-dim(degs.infVsCtrl.24h)
-write.table(degs.infVsCtrl.24h,
+head(degs.infVsBys.24h, n = 10)
+dim(degs.infVsBys.24h)
+write.table(degs.infVsBys.24h,
             file = gzfile('data/dea/degs.mdp.infVsBys.24h.tsv.gz'),
             sep = '\t', 
             quote = FALSE, 
@@ -255,6 +265,7 @@ write.table(degs.infVsCtrl.24h,
 ###############################################################
 ## CDPs
 
+
 ## 1hr
 ##  * A vs B pos
 ## Infected vs control
@@ -262,7 +273,7 @@ degs.infVsCtrl.1h <- dea(
   seurat = subset(seurat, 
                   disease_state == 'Yesinia 1h post-infection' &
                     progenitor_type == 'CDP' & 
-                    infection_status %in% c('Infected', 'Bystander')),
+                    infection_status %in% c('Infected', 'Control')),
   ident = 'Infected',
   group_by = 'infection_status'
 )
@@ -304,9 +315,9 @@ degs.infVsBys.1h <- dea(
   ident = 'Infected',
   group_by = 'infection_status'
 )
-head(degs.infVsCtrl.1h, n = 10)
-dim(degs.infVsCtrl.1h)
-write.table(degs.infVsCtrl.1h,
+head(degs.infVsBys.1h , n = 10)
+dim(degs.infVsBys.1h )
+write.table(degs.infVsBys.1h ,
             file = gzfile('data/dea/degs.cdp.infVsBys.1h.tsv.gz'),
             sep = '\t', 
             quote = FALSE, 
@@ -363,15 +374,15 @@ degs.infVsBys.24h <- dea(
   ident = 'Infected',
   group_by = 'infection_status'
 )
-head(degs.infVsCtrl.24h, n = 10)
-dim(degs.infVsCtrl.24h)
-write.table(degs.infVsCtrl.24h,
+head(degs.infVsBys.24h, n = 10)
+dim(degs.infVsBys.24h)
+write.table(degs.infVsBys.24h,
             file = gzfile('data/dea/degs.cdp.infVsBys.24h.tsv.gz'),
             sep = '\t', 
             quote = FALSE, 
             row.names = TRUE
 )
 
-ch <- read.table('data/dea/degs.cdp.bysVsCtrl.1h.tsv.gz',
-                 header = TRUE)
-head(ch)
+#ch <- read.table('data/dea/degs.cdp.bysVsCtrl.1h.tsv.gz',
+#                 header = TRUE)
+#head(ch)
