@@ -23,8 +23,8 @@ filter_settings <- list(rmlow = TRUE,
                         numbq = 2)
 
 # FASTQ files
-r1 <- '/media/ag-cherrmann/projects/11_scRNA_Stella/data/scRNAseq/C025_fastq_files/1_S1_R1.fastq.gz'
-r2 <- '/media/ag-cherrmann/projects/11_scRNA_Stella/data/scRNAseq/C025_fastq_files/1_S1_R2.fastq.gz'
+r1 <- 'data/tmp/merged_R1.fastq'
+r2 <- 'data/tmp/merged_R2.fastq'
 
 
 ## Getting gene annotations from gencode version m38.p6
@@ -77,7 +77,7 @@ Rsubread::align(
   index = "db/GRCm38/subread_index/GRCm38_p6",
   readfile1 = 'data/fastq_scpipe/scpipe_formatted.fastq.gz',
   output_file = 'data/bam_scpipe/scpipe_alignment.bam',
-  nthreads = 19
+  nthreads = 10
 )
 }
 
@@ -115,3 +115,6 @@ sc_demultiplex(
     bam_tags = bam_tags,
     mito = mito,
     has_UMI = has_UMI)
+
+
+
