@@ -1,0 +1,80 @@
+---
+title: "Data preprocessing"
+author: "Health Data Science Unit"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+## Dependencies
+library(UpSetR)
+library(readxl)
+library(knitr)
+library(dplyr)
+
+knitr::opts_chunk$set(
+        warning = FALSE, 
+        message = FALSE,
+        cache = FALSE
+)
+
+## Setting paths
+path2project <- '/media/ag-cherrmann/cramirez/interaction_DC-pathogens/'
+knitr::opts_knit$set(
+        root.dir = path2project
+)
+```
+
+## Illumina indexes in fastq files
+
+We first checked the distribution of Illumina indexes 
+in the fastq files. 
+Illumina indexes were extracted from the headers in the fastq files (R1)
+and then we filtered out sequencing error by matching them with
+the ones in the sample sheet (column = illumina_index_index_sequence_separate_index_read).
+The next upset plot show the sets of filtered illumina indexes for each
+fastq file. It can be seen that each fastq file contain a single index.
+The upset plot shows also the comparisson to the indexes reported
+in the sample sheet.
+
+```{r, illumina_indexes_in_fastqs, eval=FALSE}
+fastq.path <- paste0(path2project, 'data/fastq')
+fastq.paths <- list.files(fastq.path, full.names = T)
+fastq.paths <- grep('R1.fastq.gz', fastq.paths, value = T)
+
+fastq.contents <- lapply(fastq.paths, readLines)
+names(fastq.contents) <- gsub(path2project, '', fastq.paths)
+fastq.contents <- lapply(fastq.contents, 
+                         function(x) grep('@', x, value = T))
+ill.idxs <- lapply(fastq.contents, function(x) substr(x, 49, 56))
+ill.idxs <- lapply(ill.idxs, function(x) gsub('[0-9]|:', '', x))
+ill.idxs <- lapply(ill.idxs, unique)
+saveRDS(ill.idxs,
+        'analysis/illum_idxs_in_fastqs.rds')
+```
+```{r fig.align='center'}
+## Reading Illumina indexes from fastq files
+ill.idxs <- readRDS('analysis/illum_idxs_in_fastqs.rds')
+names(ill.idxs) <- gsub('.*\\/|.fastq.gz', '', names(ill.idxs))
+
+## Reading annotations
+metadata <- readRDS('data/sample_sheet.rds')
+ill.idxs.ann <- unique(metadata$illumina_index_index_sequence_separate_index_read)
+ill.idxs <- lapply(ill.idxs, function(x) x[x %in% ill.idxs.ann])
+ids.sheet <- metadata$illumina_index_index_sequence_separate_index_read %>%
+                unique()
+ill.idxs$'idxs_ssheet' <- ids.sheet
+#ill.idxs <- c(ill.idxs, idxs_ssheet=ids.sheet)
+upset(fromList(ill.idxs), nsets = 100)
+```
+
+The next table show the Illumina indexes in each fastq file.
+
+```{r fastq_content_table}
+fastq.idxs <- data.frame(file=names(ill.idxs)[1:6],
+                         index=unlist(ill.idxs[1:6]))
+kable(fastq.idxs, row.names = FALSE)
+```
+
