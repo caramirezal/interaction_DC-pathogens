@@ -82,18 +82,18 @@ sample_sheet <- sample_sheet_nn99 %>%
 #######################################################################
 ## Getting fastq files
 
-fastq.dir <- '/media/ag-cherrmann/projects/11_scRNA_Stella/data/scRNAseq/C025_fastq_files/'
+fastq.dir <- '/media/ag-cherrmann/cramirez/interaction_DC-pathogens/data/fastq/'
 file.names <- list.files(fastq.dir) 
-file.names <- grep('fastq$', file.names, value = TRUE)
+file.names <- grep('fastq.gz$', file.names, value = TRUE)
 
 ## file name patterns
-file.pattern <- gsub('_R[1-2].fastq', '', file.names) %>% unique()
+file.pattern <- gsub('_R[1-2].fastq.gz', '', file.names) %>% unique()
 file.pattern
 
 #######################################################################
 ## Creating folder to store results
 
-output_dir <- '/media/ag-cherrmann/cramirez/interaction_DC-pathogens/data/scpipe/'
+output_dir <- '/media/ag-cherrmann/cramirez/interaction_DC-pathogens/data/scpipe_updated/'
 if ( ! dir.exists(output_dir)) {
   dir.create(output_dir)
 }
@@ -161,8 +161,8 @@ sapply(ffastq_folders, dir.create)
 
 ## fastq formatting
 for (i in 1:length(file.pattern)) {
-  r1 <- paste0(fastq.dir, file.pattern[i], '_R1.fastq')
-  r2 <- paste0(fastq.dir, file.pattern[i], '_R2.fastq')
+  r1 <- paste0(fastq.dir, file.pattern[i], '_R1.fastq.gz')
+  r2 <- paste0(fastq.dir, file.pattern[i], '_R2.fastq.gz')
   ffastq_out <- paste0(output_dir, file.pattern[i], 
                        '/formated_fastq/', 
                        file.pattern[i], 
@@ -240,14 +240,14 @@ for (i in 1:length(file.pattern)) {
 
 ## Splitting annotations by ilumina indexing
 anns_splitted <- split(sample_sheet, 
-                       sample_sheet$illumina_index_index_sequence_separate_index_read) 
+                       sample_sheet$plate_number) 
 anns_splitted <- lapply(anns_splitted,  
                         function(x) 
                           as.data.frame(x) %>% 
                           add_rownames(var='cell_id') %>%
-                 select(cell_id, rd1_index_cell_index_index_sequence_as_in_c_rt1_primer) %>%
-                 rename(barcode=rd1_index_cell_index_index_sequence_as_in_c_rt1_primer) %>%
-                   mutate(barcode=strtrim(barcode, 7))
+                          dplyr::select(cell_id, rd1_index_cell_index_index_sequence_as_in_c_rt1_primer) %>%
+                          dplyr::rename(barcode=rd1_index_cell_index_index_sequence_as_in_c_rt1_primer) %>%
+                          dplyr::mutate(barcode=strtrim(barcode, 7))
 )
 ## Checking non-duplications
 lapply(anns_splitted, function(x) x$'barcode' %>% duplicated %>% sum)
@@ -257,17 +257,20 @@ lapply(anns_splitted, dim)
 ## Mapping to fastq file names
 mapping <- read_excel('data/mapping_fastq_to_anns.xlsx', 
                       sheet = 'mapping')
-rownames(mapping) <- mapping$ilumina_index
+mapping <- data.frame(plate_number=c('P190', 'P191', 'P192', 'P193', 'P194', 'P196'),
+                      fastq_file=file.names[c(1,4,5,6,2,3)])
+rownames(mapping) <- mapping$plate_number
 ## Checking ilumina indexes intersect in annotations and mapping
-intersect(names(anns_splitted), mapping$ilumina_index)
+intersect(names(anns_splitted), mapping$plate_number)
 ## Writing split annotations
 for (i in 1:nrow(mapping)){
-  bc <- mapping$ilumina_index[i]
-  ann_bc <- anns_splitted[bc][[1]]
-  pattern <- gsub('_R1.fastq', '', mapping$fastq_file[i])
+  plate <- mapping$plate_number[i]
+  ann_plate <- anns_splitted[plate]
+  pattern <- mapping$fastq_file[i]
   barcodes_file <- paste0(output_dir, pattern, '/', pattern, '_cell_id_barcodes.csv')
-  cat(barcodes_file, ' : ', bc, ' : ',dim(ann_bc), '\n')
-  write.csv(ann_bc, file = barcodes_file, row.names = FALSE, quote = FALSE)
+  cat(barcodes_file, ' : ', plate, ' : ',dim(ann_plate), '\n')
+  write.csv(ann_plate, file = barcodes_file, 
+            row.names = FALSE, quote = FALSE)
 }
 
 #########################################################################################
@@ -316,7 +319,6 @@ for (i in 1:length(file.pattern) ){
                    gene_fl = gene_fl)
 }
 
-
 ########################################################################################
 ## Quality control of the alignments
 counts_dir <- paste0(output_dir, '/', file.pattern, '/demultiplexed/')
@@ -324,17 +326,17 @@ counts_dir <- paste0(output_dir, '/', file.pattern, '/demultiplexed/')
 sce.list <- lapply(counts_dir, create_sce_by_dir)
 names(sce.list) <- file.pattern
 
-pdf('figures/barcode_demultiplexing.pdf')
+pdf('figures/barcode_demultiplexing_UPDATE.pdf')
 demultiplexing.plots <- lapply(sce.list, plot_demultiplex)
 demultiplexing.plots <- lapply(1:length(demultiplexing.plots), 
                                function(i) demultiplexing.plots[i][[1]] +
                                             ggtitle(
                                               names(demultiplexing.plots)[i]
                                               ))
-demultiplexing.plots
+lapply(demultiplexing.plots, plot)
 dev.off()
 
-pdf('figures/umi_deduplications.pdf')
+pdf('figures/umi_deduplications_UPDATE.pdf')
 deduplication.plots <- lapply(sce.list, plot_UMI_dup, log10_x = FALSE)
 deduplication.plots <- lapply(1:length(deduplication.plots), 
                                function(i) deduplication.plots[i][[1]] +
@@ -344,7 +346,7 @@ deduplication.plots <- lapply(1:length(deduplication.plots),
 deduplication.plots
 dev.off()
 
-pdf('figures/mapping.pdf')
+pdf('figures/mapping_UPDATE.pdf')
 lapply(1:length(sce.list), 
        function(i)
          plot_mapping(sce.list[i][[1]], 
@@ -372,8 +374,4 @@ sample_sheet %>%
   dim
 
 
-bam_10_s5 <- read.table('data/scpipe/10_S5/bam/10_S5_aligned_annotated.tsv',
-                        comment.char = "", sep = '\t', header = FALSE, quote = '',
-                        row.names = FALSE, stringsAsFactors = FALSE, skip = 1)
-dim(bam_10_s5)
-head(bam_10_s5)
+
