@@ -238,9 +238,18 @@ for (i in 1:length(file.pattern)) {
 
 ##############################################################################
 
+## Mapping
+dplyr::select(as.data.frame(sample_sheet), 
+                         illumina_rpi_number, plate_number, 
+                         illumina_index_index_sequence_separate_index_read) %>% 
+           unique() %>%
+            write.table(file = 'data/mapping_metadata.tsv',
+                        sep = '\t',
+                        row.names = FALSE)
+
 ## Splitting annotations by ilumina indexing
 anns_splitted <- split(sample_sheet, 
-                       sample_sheet$plate_number) 
+                       sample_sheet$illumina_index_index_sequence_separate_index_read) 
 anns_splitted <- lapply(anns_splitted,  
                         function(x) 
                           as.data.frame(x) %>% 
@@ -252,25 +261,25 @@ anns_splitted <- lapply(anns_splitted,
 ## Checking non-duplications
 lapply(anns_splitted, function(x) x$'barcode' %>% duplicated %>% sum)
 lapply(anns_splitted, function(x) x$'barcode' %>% sort)
+lapply(anns_splitted, head)
 lapply(anns_splitted, dim)
 
 ## Mapping to fastq file names
 mapping <- read_excel('data/mapping_fastq_to_anns.xlsx', 
                       sheet = 'mapping')
-mapping <- data.frame(plate_number=c('P190', 'P191', 'P192', 'P193', 'P194', 'P196'),
-                      fastq_file=file.names[c(1,4,5,6,2,3)])
-rownames(mapping) <- mapping$plate_number
+rownames(mapping) <- mapping$ilumina_index
+mapping$fastq_file <- paste0(mapping$fastq_file, '.gz') 
+mapping
 ## Checking ilumina indexes intersect in annotations and mapping
-intersect(names(anns_splitted), mapping$plate_number)
+intersect(names(anns_splitted), mapping$ilumina_index)
 ## Writing split annotations
 for (i in 1:nrow(mapping)){
-  plate <- mapping$plate_number[i]
-  ann_plate <- anns_splitted[plate]
-  pattern <- mapping$fastq_file[i]
+  bc <- mapping$ilumina_index[i]
+  ann_bc <- anns_splitted[bc][[1]]
+  pattern <- gsub('_R1.fastq.gz', '', mapping$fastq_file[i])
   barcodes_file <- paste0(output_dir, pattern, '/', pattern, '_cell_id_barcodes.csv')
-  cat(barcodes_file, ' : ', plate, ' : ',dim(ann_plate), '\n')
-  write.csv(ann_plate, file = barcodes_file, 
-            row.names = FALSE, quote = FALSE)
+  cat(barcodes_file, ' : ', bc, ' : ',dim(ann_bc), '\n')
+  write.csv(ann_bc, file = barcodes_file, row.names = FALSE, quote = FALSE)
 }
 
 #########################################################################################
