@@ -1,5 +1,5 @@
 ## Alignment and counting CEL-Seq2 reads using scPipe
-## Modified from a previous implementation
+## Modified from Peter Hickey script
 
 ## Dependencies
 library(scPipe)
