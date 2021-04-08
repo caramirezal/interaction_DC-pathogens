@@ -1,0 +1,175 @@
+---
+title: "scPipe QC workflow"
+author: "Health Data Unit"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+
+```{r setup, include=FALSE}
+## Dependencies
+library(dplyr)
+library(scPipe)
+library(reshape2)
+library(ggplot2)
+library(kableExtra)
+library(knitr)
+library(rmarkdown)
+library(data.table)
+
+knitr::opts_chunk$set(
+        warning = FALSE, 
+        message = FALSE,
+        cache = FALSE
+)
+
+## Setting paths
+path2project <- '/media/ag-cherrmann/cramirez/interaction_DC-pathogens/'
+knitr::opts_knit$set(
+        root.dir = path2project
+)
+```
+
+# Quality Control Report 
+
+This report summarises quality metrics of demultiplexed data using the scPipe workflow. The input
+is a list of Single Cell Experiment (SCE) objects. Some quality metrics for each demultiplexed fastq file are provided.
+
+
+```{r, loading_demultiplexing}
+## Loading the results from the demultiplexing
+output_dir <- 'data/scpipe_updated/'
+fastq.dir <- 'data/fastq/'
+file.names <- list.files(fastq.dir) 
+file.names <- grep('fastq.gz$', file.names, value = TRUE)
+## file name patterns
+file.pattern <- gsub('_R[1-2].fastq.gz', '', file.names) %>% unique()
+counts_dir <- paste0(output_dir, '/', file.pattern, '/demultiplexed/')
+
+sce.list <- lapply(counts_dir, create_sce_by_dir)
+names(sce.list) <- file.pattern
+```
+
+
+## Mapped Reads
+
+The next table shows all the mapping quality metrics for each cell (or well). 
+
+```{r, mapping_stats, results='asis', echo=FALSE}
+qc.list <- lapply(names(sce.list), 
+                    function(name) {
+                                  metrics <- QC_metrics(sce.list[name][[1]])
+                                  df <- as.data.frame(metrics)
+                                  df <- add_rownames(df, var = 'well')
+                                  dplyr::mutate(df, name=name)
+                          })
+
+## getting frequencies 
+names(qc.list) <- names(sce.list)
+map.stats.df <- do.call(rbind, qc.list)
+paged_table(map.stats.df, options = list(rownames.print=FALSE))
+```
+
+## Number of duplications
+
+The next plot shows the frequencies of UMI duplications *vs* the number of counts for each
+demultiplexed fastq file.
+
+```{r duplications, fig.align='center'}
+dup.list <-  lapply(names(sce.list), 
+                    function(name) {
+                                  df <- UMI_dup_info(sce.list[name][[1]])
+                                  df <- as.data.frame(df)
+                                  mutate(df, name=name)
+                          })
+
+do.call(rbind, dup.list) %>%
+        ggplot(aes(x=log10(`duplication.number`), y=count, colour=name)) +
+                geom_line() +
+                theme_classic() +
+                labs(x='Log10(Duplication number)',
+                     y='Frequency',
+                     colour='') +
+                theme_bw()
+```
+
+
+### Mapped reads 
+
+The next barplot shows the number of mapped (and unmapped) reads en each fastq file. The mapped
+reads are shown according to the genomic location, i. e., reads mapped to mitochondrial, intron,
+exon regions. Mapped reads to ERCC control sequences and aligned but not mapped to any regions
+in the genome are also shown.
+
+
+```{r, qc_metrics_calculation, fig.align='center'}
+demult.metrics.list <- lapply(names(sce.list), 
+                          function(name) {
+                                  df <- QC_metrics(sce.list[name][[1]])
+                                  df <- as.data.frame(df)
+                                  mutate(df, name=name)
+                          }
+)
+
+do.call(rbind, demult.metrics.list) %>%
+        melt() %>%
+        ggplot(aes(x=variable, y=value, fill=name)) +
+                geom_bar(stat = 'identity', position = 'dodge') +
+                coord_flip() +
+                labs(x='', y='Counts', fill='') +
+                theme_bw()
+```
+
+## Proportion of mapped reads 
+
+### Percentage of mapped reads by cell (or well)
+
+The following plots show the proportion of mapped reads by cell (sample). Each column represent
+a single cell (or sample). A plot is given for every demultiplexed fastq file.
+
+```{r, proportion_mapped_reads, fig.width=16, fig.height=14}
+perc.plot <- lapply(names(sce.list), 
+       function(name){
+         plot_mapping(sce.list[name][[1]], 
+             percentage = TRUE, 
+             dataname = "sc_sample_data") +
+           labs(x='Cells/Samples', 
+                y='Percentage of reads',
+                fill='') +
+           theme_classic() +
+           theme(axis.ticks.x = element_blank(),
+                 axis.text.x = element_blank()) +
+           ggtitle(name)
+       })
+gridExtra::grid.arrange(
+  grobs=perc.plot
+)
+```
+
+### Number of mapped reads by cell (or well)
+
+The following plots show the number of mapped reads by cell (sample). Each column represent
+a single cell (or sample). A plot is given for every demultiplexed fastq file.
+
+```{r, counts_mapped_reads, fig.width=16, fig.height=14}
+perc.plot <- lapply(names(sce.list), 
+       function(name){
+         plot_mapping(sce.list[name][[1]], 
+             percentage = FALSE, 
+             dataname = "sc_sample_data") +
+           labs(x='Cells/Samples', 
+                y='Number of Reads',
+                fill='') +
+           theme_classic() +
+           theme(axis.ticks.x = element_blank(),
+                 axis.text.x = element_blank()) +
+           ggtitle(name)
+       })
+gridExtra::grid.arrange(
+  grobs=perc.plot
+)
+```
+
+
