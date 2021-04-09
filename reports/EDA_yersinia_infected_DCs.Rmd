@@ -1,0 +1,46 @@
+---
+title: "Explorative Data Analysis of DCs infected with Yersinia scRNA-Seq data"
+author: "Health Data Unit"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+
+This report provides documentation for the analysis of scRNA-Seq data of Dendritic Cells infected
+with *Yersinia enterocolitica*. 
+
+
+```{r setup, include=FALSE}
+## Dependencies
+library(dplyr)
+library(scPipe)
+library(ggplot2)
+
+knitr::opts_chunk$set(
+        warning = FALSE, 
+        message = FALSE,
+        cache = FALSE
+)
+
+## Setting paths
+path2project <- '/media/ag-cherrmann/cramirez/interaction_DC-pathogens/'
+knitr::opts_knit$set(
+        root.dir = path2project
+)
+```
+
+
+
+```{r}
+map.stats.df %>%
+  mutate(plate=gsub('_.*', '', well)) %>%
+    dplyr::select(plate, mapped_to_intron) %>%
+      ggplot(aes(x=plate, y=log10(mapped_to_intron),
+                 fill=plate)) +
+          geom_violin() +
+          theme(legend.position = 'none') +
+          theme_classic()
+```
+
