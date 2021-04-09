@@ -18,11 +18,16 @@ library(kableExtra)
 library(knitr)
 library(rmarkdown)
 library(data.table)
+library(Seurat)
+library(readxl)
+library(biomaRt)
+library(viridis)
 
 knitr::opts_chunk$set(
         warning = FALSE, 
         message = FALSE,
-        cache = FALSE
+        cache = FALSE,
+        results = 'hide'
 )
 
 ## Setting paths
@@ -30,6 +35,9 @@ path2project <- '/media/ag-cherrmann/cramirez/interaction_DC-pathogens/'
 knitr::opts_knit$set(
         root.dir = path2project
 )
+
+## Settings
+category <- 'plate_number' 
 ```
 
 # Quality Control Report 
@@ -170,6 +178,143 @@ perc.plot <- lapply(names(sce.list),
 gridExtra::grid.arrange(
   grobs=perc.plot
 )
+```
+
+## % Mitochondrial genes
+
+To check the integrity and viability of the cells the percentage is shown next. An 
+scatter plot showing the counts of RNA in logarithmic scale *vs* the percentage of
+mitochondrial of genes of the total of counts is given. The dashed red lines represent
+suggested cut thresholds for filtering at 5 and 95 percentiles.
+
+```{r PCA, fig.align='center'}
+## Definition of the seurat object
+seu.list <- lapply(names(sce.list), function(name){
+  CreateSeuratObject(
+    counts = assay(sce.list[name][[1]]), 
+    assay = 'RNA', 
+    min.cells = 1, 
+    min.features = 1,
+    project = name
+  )
+})
+names(seu.list) <- names(sce.list)
+seurat <- merge(x=seu.list[1][[1]], y=seu.list[2:length(seu.list)]) 
+
+## Adding metadata
+sample_sheet <- readRDS('data/sample_sheet.rds')
+seurat@meta.data <- cbind(seurat@meta.data, 
+                          sample_sheet[colnames(seurat),])
+md <- seurat@meta.data
+```
+
+```{r}
+## Annotating ensemble gene stable id with gene symbol
+mart <- useDataset("mmusculus_gene_ensembl", 
+                   useMart("ensembl"))
+genes.seu <- rownames(seurat)
+genes <- gsub('\\..', '', rownames(seurat))
+df <- data.frame(ensembl_gene_id_version=rownames(seurat))
+G_list <- getBM(filters= "ensembl_gene_id", 
+                attributes= c("ensembl_gene_id",
+                              "mgi_symbol"), 
+                values=genes, mart= mart)
+head(G_list)
+dim(G_list)
+unique(G_list$mgi_symbol) %>% length()
+
+## Changing gene ensembl gene id with gene symbols
+count.mtx <- as.matrix(seurat@assays$RNA@counts)
+rownames(count.mtx) <- gsub('\\..', '', rownames(count.mtx))
+ann <- G_list[!duplicated(G_list$mgi_symbol), ] ## drop duplications
+shared.genes <- intersect(rownames(count.mtx), ann$ensembl_gene)
+shared.genes <- shared.genes[!duplicated(shared.genes)]
+length(shared.genes)
+count.mtx <- count.mtx[shared.genes, ] ## Keeping annotated
+ann <- filter(ann, ensembl_gene_id %in% shared.genes)
+ann <- filter(ann, ! duplicated(ensembl_gene_id))
+rownames(ann) <- ann$ensembl_gene_id
+ann <- ann[shared.genes,]
+any(rownames(count.mtx) != ann$ensembl_gene_id) ## Checking order 
+rownames(count.mtx) <- ann$mgi_symbol
+count.mtx <- count.mtx[rownames(count.mtx) != '', ] ## removing missing value
+rownames(count.mtx) %>% head
+
+seurat <- CreateSeuratObject(
+  counts = count.mtx,
+  min.cells = 1,
+  min.features = 1,
+  project = 'Yersinia',
+  assay = 'RNA'
+)
+md <- dplyr::select(md, plate_number:sequencing_run)
+seurat@meta.data <- cbind(seurat@meta.data, 
+                          md[rownames(seurat@meta.data),])
+# Saving seurat object
+saveRDS(seurat, 
+        file = 'data/yersinia_seurat.rds',
+        compress = TRUE)
+```
+
+
+```{r percentage_mito, fig.align='center'}
+seurat[["percent.mt"]] <- PercentageFeatureSet(seurat, pattern = "^mt-")
+seurat@meta.data %>%
+  ggplot(aes(x=log(nCount_RNA), 
+             colour=get(category),
+             y=percent.mt)) +
+        geom_point(alpha=0.5) +
+        geom_hline(yintercept = quantile(seurat$percent.mt, 0.95),
+                   linetype = 'dashed', color='red') +
+        geom_vline(xintercept = quantile(log(seurat$nCount_RNA), c(0.05, 0.95)),
+                   linetype = 'dashed', color='red') +
+        labs(x='Log(Counts of RNA)', y='Percentage mitochondrial',
+             colour='') +
+        theme_classic()
+```
+
+## QC metrics by selected category
+
+The next violin plots shows the distribution of the percentage of counts assigned to
+mitochondrial genes and the number of read counts *per* selected category.
+
+
+```{r, fig.align='center'}
+VlnPlot(seurat, features = c('percent.mt', 'nCount_RNA'))
+```
+
+## Mapping metrics by category
+
+Mapping metrics are provided in the following violin plots by category. Note that
+the read counts are given in log 10 scale.
+
+```{r, fig.align='center', fig.width=9}
+map.stats.df %>%
+  mutate(plate=gsub('_.*', '', well)) %>%
+    dplyr::select(-well, -name) %>%
+    melt() %>%
+    ggplot(aes(x=plate, y=log10(value), fill=plate)) +
+          geom_violin() +
+          facet_wrap(~variable) +
+          theme_bw() +
+          theme(legend.position = 'none') +
+          labs(x='', y='Log10(Counts)')
+```
+
+
+## Dimensional reduction
+
+The following plot shows a PCA projection of the data highlighting with color the 
+selected category.
+
+```{r, fig.align='center'}
+Idents(seurat) <- seurat@meta.data[, category]
+seurat <- NormalizeData(seurat) %>% ScaleData()
+seurat <- FindVariableFeatures(seurat)
+seurat <- RunPCA(seurat, npcs = 50)
+DimPlot(seurat, 
+        reduction = 'pca', 
+        label = TRUE) + NoLegend()
 ```
 
 
