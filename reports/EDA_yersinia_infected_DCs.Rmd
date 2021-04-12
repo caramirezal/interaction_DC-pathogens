@@ -8,20 +8,35 @@ output:
 ---
 
 
-This report provides documentation for the analysis of scRNA-Seq data of Dendritic Cells infected
-with *Yersinia enterocolitica*. 
+This report provides documentation for the analysis of scRNA-Seq data of Dendritic Cells 
+progenitors infected with *Yersinia enterocolitica* provided by the Department of 
+Internal Medicine II, University of Tübingen, Germany.
 
+
+## Data Analysis
+
+A repository storing custom scripts has been created and is available in github 
+[here](https://github.com/caramirezal/interaction_DC-pathogens). This repository
+along with the data are stored locally in the BioQuant curry cluster of the 
+University of Heidelberg.
+
+Data were preprocessed as shown in the `reports/scPipe_QC_workflow.Rmd` file.
 
 ```{r setup, include=FALSE}
 ## Dependencies
 library(dplyr)
 library(scPipe)
 library(ggplot2)
+library(rmarkdown)
+library(Seurat)
+library(ggrepel)
 
 knitr::opts_chunk$set(
         warning = FALSE, 
         message = FALSE,
-        cache = FALSE
+        cache = FALSE,
+        results = 'hide',
+        fig.align='center'
 )
 
 ## Setting paths
@@ -33,14 +48,343 @@ knitr::opts_knit$set(
 
 
 
-```{r}
-map.stats.df %>%
-  mutate(plate=gsub('_.*', '', well)) %>%
-    dplyr::select(plate, mapped_to_intron) %>%
-      ggplot(aes(x=plate, y=log10(mapped_to_intron),
-                 fill=plate)) +
-          geom_violin() +
-          theme(legend.position = 'none') +
-          theme_classic()
+```{r, settings}
+## Loading data
+seurat <- readRDS('data/yersinia_seurat.rds')
+
+## Reading processed annotations
+anns <- readxl::read_xlsx('data/20201214 C025_sample_sheet_SEA.xlsx') %>%
+            as.data.frame()
+rownames(anns) <- with(anns, paste0(plate_number, '_', well_position))
+## Adding annotations
+anns <- anns[rownames(seurat@meta.data), ]
+anns <- anns[, c("progenitor_type: 'CDP' or 'MDP'",
+                 "bacteria: 'HK Ye' or 'Ye' or 'no Ye'",
+                 "treatment: A-untreated; B-MOI 1; C-MOI 0.1; D-MOI 0.01",
+                 "bacteria_attached: '+' or '-'",
+                 'infection_time')]
+colnames(anns)[1:4] <- c('progenitor', 'bacteria', 'treatment', 'bacteria_attached')
+## row order check
+any(rownames(anns) != rownames(seurat@meta.data))
+seurat@meta.data <- cbind(seurat@meta.data, anns)
+
+## Selected category
+category <- 'plate_number'
 ```
 
+```{r}
+seurat@meta.data %>%
+        paged_table()
+```
+
+
+## Filtering cells
+
+Initially, there were `r ncol(seurat)` wells containing single cells.
+To filter out poor quality sequenced wells we removed some of them as follows: 
+*i*) cells above 95 percentile for the value of the percentage of gene counts
+corresponding to mitochondrial genes and *ii*) cells under and above 5 and 95 
+percentile threshold of number of RNA counts.
+
+
+```{r, filtering}
+seurat@meta.data %>%
+  ggplot(aes(x=log(nCount_RNA), 
+             colour=get(category),
+             y=percent.mt)) +
+        geom_point(alpha=0.5) +
+        geom_hline(yintercept = quantile(seurat$percent.mt, 0.95),
+                   linetype = 'dashed', color='red') +
+        geom_vline(xintercept = quantile(log(seurat$nCount_RNA), c(0.05, 0.95)),
+                   linetype = 'dashed', color='red') +
+        labs(x='Log(Counts of RNA)', y='Percentage mitochondrial',
+             colour='') +
+        theme_classic()
+```
+
+```{r, filtering_cellss}
+seurat <- subset(seurat,
+                 quantile(seurat$percent.mt, 0.05) < percent.mt & 
+                     percent.mt < quantile(seurat$percent.mt, 0.95) &
+                         nCount_RNA < quantile(seurat$nCount_RNA, 0.95)
+)
+```
+
+After filtering `r ncol(seurat)` wells passed the quality control. 
+
+# Single cells
+
+The next table shows the number of wells for single cells or pools in each plate after
+filtering. There are `r 179 + 14 + 157` single cells across three different plates (P193, P194 and P196). In the following sections we focused on the analysis of single cells.
+
+
+```{r, single_cells_table, results='asis'}
+table(seurat$sample_name, seurat$plate_number) %>%
+        as.data.frame.matrix() %>%
+        paged_table()
+```
+
+
+```{r, single_cells_umap, fig.align='center'}
+seurat.sc <- subset(seurat, sample_name == 'single cell')
+seurat.sc <- NormalizeData(seurat.sc) %>% ScaleData()
+seurat.sc <- FindVariableFeatures(seurat.sc)
+seurat.sc <- RunPCA(seurat.sc, npcs = 50, features = VariableFeatures(seurat.sc))
+seurat.sc <- RunUMAP(seurat.sc, 
+                     reduction = 'pca', 
+                     dims = 1:20)
+```
+
+
+
+The next UMAP projections show single cells according to the different categories 
+in clusters. Four clusters can be observed which coincides with cells in plates. 
+Some cells of plate 196 (blue) fall more close to that of plates 193 (salmon) and 194 (green). This suggest the existence of a batch effect ought to differences in 
+sequencing of different plates. 
+
+
+```{r categories_in_single_cells, fig.align='center', fig.width=12, fig.height=11}
+## Annotating with yersinia infection and cell type
+plate <- seurat.sc %>%
+        DimPlot(label = TRUE, 
+                label.box = TRUE, 
+                repel = TRUE) + NoLegend() +
+        ggtitle('Plate')
+
+disease.state <- seurat.sc %>%
+        DimPlot(group.by = c('disease_state'),
+                label = TRUE,
+                label.box = TRUE) + 
+        NoLegend() +
+        ggtitle('Disease State')
+
+bacteria <- seurat.sc %>%
+        DimPlot(group.by = c('bacteria'),
+                label = TRUE,
+                label.box = TRUE, 
+                repel = TRUE) + 
+        NoLegend() +
+        ggtitle('Bacteria')
+
+treatment <- seurat.sc %>%
+        DimPlot(group.by = c('treatment'),
+                label = TRUE,
+                label.box = TRUE, 
+                repel = TRUE) + 
+        NoLegend() +
+        ggtitle('Treatment')
+
+progenitor <- seurat.sc %>%
+        DimPlot(group.by = c('progenitor'),
+                label = TRUE,
+                label.box = TRUE, 
+                repel = TRUE) + 
+        NoLegend() +
+        ggtitle('Progenitor')
+
+infection_time <- seurat.sc %>%
+        DimPlot(group.by = c('infection_time'),
+                label = TRUE,
+                label.box = TRUE, 
+                repel = TRUE) + 
+        NoLegend() +
+        ggtitle('Infection time')
+
+gridExtra::grid.arrange(
+  grobs = list(plate, disease.state, 
+               bacteria, treatment, 
+               progenitor, infection_time)
+)
+```
+
+# Differential expression analysis
+
+We performed a differential expression analysis taking cells in plates separately.
+
+## 1 HPI
+
+First we analyzed 1 hour post infection (HPI) which corresponds to plate 193. The 
+next table shows the composition of the plate 193 according to the progenitor cell
+types and whether the bacteria was found to be attached or not.
+
+```{r}
+seurat.sc@meta.data %>%
+  filter(plate_number=='P193') %>%
+  select(bacteria, progenitor) %>%
+  table()
+```
+
+### CDP 
+
+ * Infected vs non-infected 
+ 
+The next table shows DEGs in Dendritic cells derived from CDP comparing infected *vs*
+non-infected cells.
+
+
+```{r, CDP_infection_1hpi}
+Idents(seurat.sc) <- seurat.sc$bacteria
+cdp.1hpi.degs <- seurat.sc %>%
+  subset(progenitor=='CDP' & plate_number=='P193') %>%
+  FindMarkers(ident.1='Ye') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  filter(p_val < 0.05)
+cdp.1hpi.degs %>%
+  paged_table()
+```
+
+```{r}
+seurat.sc %>%
+  subset(progenitor=='CDP' & plate_number=='P193') %>%
+  FindMarkers(ident.1='Ye') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.55  & p_val < 0.05) | 
+                            p_val < 0.001, TRUE, FALSE)) %>%
+  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_text_repel(show.legend=FALSE) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'black')) +
+        theme_classic()
+```
+
+
+### MDP 
+
+ * Infected vs non-infected 
+ 
+The next table shows DEGs in Dendritic cells derived from MDP comparing infected *vs*
+non-infected cells.
+
+
+```{r, CDP_infection}
+Idents(seurat.sc) <- seurat.sc$bacteria
+mdp.1hpi.degs <- seurat.sc %>%
+  subset(progenitor=='MDP' & plate_number=='P193') %>%
+  FindMarkers(ident.1='Ye') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  filter(p_val < 0.05)
+mdp.1hpi.degs %>%
+  paged_table()
+```
+
+```{r}
+seurat.sc %>%
+  subset(progenitor=='MDP' & plate_number=='P193') %>%
+  FindMarkers(ident.1='Ye') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.8  & p_val < 0.05 ) |
+                             p_val < 0.0005,
+                           TRUE, FALSE)) %>%
+  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_text_repel(show.legend=FALSE) +
+        xlim(c(-2, 2)) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'black')) +
+        theme_classic()
+```
+
+
+## 24 HPI
+
+Then, we analyzed 24 hour post infection (HPI) which corresponds to plate 196. The 
+next table shows the composition of the plate 196 according to the progenitor cell
+types and whether the bacteria was found to be attached or not.
+
+
+```{r plate_196}
+seurat.sc@meta.data %>%
+  filter(plate_number=='P196') %>%
+  select(bacteria, progenitor) %>%
+  table()
+```
+
+
+### CDP 
+
+ * Infected vs non-infected 
+ 
+The next table shows DEGs in Dendritic cells derived from CDP comparing infected *vs*
+non-infected cells.
+
+
+```{r, CDP_infection_24hpi}
+Idents(seurat.sc) <- seurat.sc$bacteria
+cdp.24hpi.degs <- seurat.sc %>%
+  subset(progenitor=='CDP' & plate_number=='P196') %>%
+  FindMarkers(ident.1='Ye') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  filter(p_val < 0.05)
+cdp.24hpi.degs %>%
+  paged_table()
+```
+
+
+
+```{r}
+seurat.sc %>%
+  subset(progenitor=='CDP' & plate_number == 'P196') %>%
+  FindMarkers(ident.1='Ye') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(highlight=ifelse(abs(avg_log2FC) > 1.25 & 
+                            p_val < 0.05, TRUE, FALSE)) %>%
+  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_text_repel(show.legend=FALSE, force = 2) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'black')) +
+        theme_classic()
+```
+
+
+### MDP 
+
+ * Infected vs non-infected 
+ 
+The next table shows DEGs in Dendritic cells derived from MDP comparing infected *vs*
+non-infected cells.
+
+
+```{r, MDP_infection_24hpi}
+Idents(seurat.sc) <- seurat.sc$bacteria
+mdp.24hpi.degs <- seurat.sc %>%
+  subset(progenitor=='MDP' & plate_number=='P196') %>%
+  FindMarkers(ident.1='Ye') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  filter(p_val < 0.05)
+mdp.24hpi.degs %>%
+  paged_table()
+```
+
+
+```{r}
+seurat.sc %>%
+  subset(progenitor=='MDP' & plate_number == 'P196') %>%
+  FindMarkers(ident.1='Ye') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(highlight=ifelse(abs(avg_log2FC) > 1.25 & 
+                            p_val < 0.05, TRUE, FALSE)) %>%
+  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_text_repel(show.legend=FALSE, force = 2) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'black')) +
+        theme_classic()
+```
