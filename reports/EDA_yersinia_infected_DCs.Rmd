@@ -30,6 +30,7 @@ library(ggplot2)
 library(rmarkdown)
 library(Seurat)
 library(ggrepel)
+library(viridis)
 
 knitr::opts_chunk$set(
         warning = FALSE, 
@@ -206,7 +207,8 @@ whether the cell has Yersinia attached.
 
 
 ```{r}
-sc.seurat$'treated' <- ifelse(sc.seurat$treatment == 'MOI 0', 'Mock-Infected', 'Infected')
+sc.seurat$'treated' <- ifelse(sc.seurat$treatment == 'MOI 0', 
+                              'Mock-Infected', 'Infected')
 sc.seurat$'Bystander' <- paste0(sc.seurat$treated, '_', sc.seurat$bacteria_attached) 
 sc.seurat$Bystander <- gsub(' ', '_', sc.seurat$Bystander)
 sc.seurat$Bystander <- plyr::mapvalues(
@@ -239,10 +241,11 @@ sc.seurat@meta.data %>%
   paged_table()
 ```
 
-## 1 HPI (Plate 193)
-
 
 ## Vulcano plots
+
+## 1 HPI (Plate 193)
+
 
 DEGs are shown in the following vulcano plots for CDP and MDP at time 1 hpi.
 Some top genes based on fold change expression with p-val < 0.05 are shown
@@ -251,119 +254,159 @@ with significant change are provided at the end of this report.
 
 
 ```{r cdp_1hr_vulcano_plots}
+## Loading selected genes
+selected_genes <- readLines('data/selected_genes.txt')
+#selected_genes
+
 Idents(sc.seurat) <- as.character(sc.seurat$Bystander)
 infvsBys.cdp.deg <- sc.seurat %>%
   subset(progenitor=='CDP' & plate_number=='P193') %>%
   subset(Bystander != 'Mock-Infected') %>%
   FindMarkers(ident.1='Infected') %>%
-  arrange(desc(abs(avg_log2FC)))
-infvsBys.cdp.plot <- infvsBys.cdp.deg %>%
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
-  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.75  & p_val < 0.05),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1  & p_val < 0.05 ),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+infvsBys.cdp.plot <- infvsBys.cdp.deg %>%
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(infvsBys.cdp.deg,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black') +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-2, 2) +
         ggtitle('CDP - 1HPI - Infected vs Bystander')
-
+#infvsBys.cdp.plot
 
 infvsMock.cdp.deg <- sc.seurat %>%
   subset(progenitor=='CDP' & plate_number=='P193') %>%
   subset(Bystander != 'Bystander') %>%
   FindMarkers(ident.1='Infected') %>%
-  arrange(desc(abs(avg_log2FC)))
-infvsMock.cdp.plot <- infvsMock.cdp.deg %>%  
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
-  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.8  & p_val < 0.05),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1  & p_val < 0.05 ),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+infvsMock.cdp.plot <- infvsMock.cdp.deg %>%  
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(infvsMock.cdp.deg,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black') +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-2, 2) +
         ggtitle('CDP - 1HPI - Infected vs Mock-Infected')
+#infvsMock.cdp.plot
 
 
 bysvsMock.cdp.deg <- sc.seurat %>%
   subset(progenitor=='CDP' & plate_number=='P193') %>%
   subset(Bystander != 'Infected') %>%
   FindMarkers(ident.1='Bystander') %>%
-  arrange(desc(abs(avg_log2FC)))
-bysvsMock.cdp.plot <- bysvsMock.cdp.deg %>%  
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
-  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.5  & p_val < 0.05),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.5  & p_val < 0.05 ),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+bysvsMock.cdp.plot <- bysvsMock.cdp.deg %>%  
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(bysvsMock.cdp.deg,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black') +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-2, 2) +
         ggtitle('CDP - 1HPI - Bystander vs Mock-Infected')
 ```
 
+
 ```{r mdp_1hr_vulcano_plots}
-Idents(sc.seurat) <- as.character(sc.seurat$Bystander)
+#Idents(sc.seurat) <- as.character(sc.seurat$Bystander)
 infvsBys.mdp.deg <- sc.seurat %>%
   subset(progenitor=='MDP' & plate_number=='P193') %>%
   subset(Bystander != 'Mock-Infected') %>%
   FindMarkers(ident.1='Infected') %>%
-  arrange(desc(abs(avg_log2FC)))
-infvsBys.mdp.plot <- infvsBys.mdp.deg %>%
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
   mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.9  & p_val < 0.05),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+infvsBys.mdp.plot <- infvsBys.mdp.deg %>%
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(infvsBys.mdp.deg,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black') +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-2, 2) +
         ggtitle('MDP - 1HPI - Infected vs Bystander')
-
 
 infvsMock.mdp.deg <- sc.seurat %>%
   subset(progenitor=='MDP' & plate_number=='P193') %>%
   subset(Bystander != 'Bystander') %>%
   FindMarkers(ident.1='Infected') %>%
-  arrange(desc(abs(avg_log2FC)))
-infvsMock.mdp.plot <- infvsMock.mdp.deg %>%  
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
   mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.85  & p_val < 0.05),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+infvsMock.mdp.plot <- infvsMock.mdp.deg %>%  
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(infvsMock.mdp.deg,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black') +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-2, 2) +
         ggtitle('MDP - 1HPI - Infected vs Mock-Infected')
@@ -373,23 +416,31 @@ bysvsMock.mdp.deg <- sc.seurat %>%
   subset(progenitor=='MDP' & plate_number=='P193') %>%
   subset(Bystander != 'Infected') %>%
   FindMarkers(ident.1='Bystander') %>%
-  arrange(desc(abs(avg_log2FC)))
-bysvsMock.mdp.plot <- bysvsMock.mdp.deg %>%  
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
-  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.9  & p_val < 0.05),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.9  & p_val < 0.05 ),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+bysvsMock.mdp.plot <- bysvsMock.mdp.deg %>%  
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(bysvsMock.mdp.deg,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black') +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-2, 2) +
         ggtitle('MDP - 1HPI - Bystander vs Mock-Infected')
+
 ```
 
 
@@ -420,20 +471,28 @@ infvsBys.cdp.deg.24 <- sc.seurat %>%
   subset(progenitor=='CDP' & plate_number=='P196') %>%
   subset(Bystander != 'Mock-Infected') %>%
   FindMarkers(ident.1='Infected') %>%
-  arrange(desc(abs(avg_log2FC)))
-infvsBys.cdp.plot.24 <- infvsBys.cdp.deg.24 %>%
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
   mutate(highlight=ifelse( ( avg_log2FC < - 0.85  & p_val < 0.05 ) |
-                          ( avg_log2FC > 2  & p_val < 0.05 ), TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+                          ( avg_log2FC > 2  & p_val < 0.05 ),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+infvsBys.cdp.plot.24 <- infvsBys.cdp.deg.24 %>%
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(infvsBys.cdp.deg.24,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black') +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-2, 3) +
         ggtitle('CDP - 24HPI - Infected vs Bystander')
@@ -443,21 +502,28 @@ infvsMock.cdp.deg.24 <- sc.seurat %>%
   subset(progenitor=='CDP' & plate_number=='P196') %>%
   subset(Bystander != 'Bystander') %>%
   FindMarkers(ident.1='Infected') %>%
-  arrange(desc(abs(avg_log2FC)))
-infvsMock.cdp.plot.24 <- infvsMock.cdp.deg.24 %>%  
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
-  mutate(highlight=ifelse( ( avg_log2FC < - 0.5  & p_val < 0.05) |
+  mutate(highlight=ifelse( ( avg_log2FC < - 0.5  & p_val < 0.05 ) |
                              ( avg_log2FC > 2  & p_val < 0.05 ),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+infvsMock.cdp.plot.24 <- infvsMock.cdp.deg.24 %>%  
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(infvsMock.cdp.deg.24,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black') +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-4, 4) +
         ggtitle('CDP - 24HPI - Infected vs Mock-Infected')
@@ -466,20 +532,28 @@ bysvsMock.cdp.deg.24 <- sc.seurat %>%
   subset(progenitor=='CDP' & plate_number=='P196') %>%
   subset(Bystander != 'Infected') %>%
   FindMarkers(ident.1='Bystander') %>%
-  arrange(desc(abs(avg_log2FC)))
-bysvsMock.cdp.plot.24 <- bysvsMock.cdp.deg.24 %>%  
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
-  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1  & p_val < 0.05),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1  & p_val < 0.05 ),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+bysvsMock.cdp.plot.24 <- bysvsMock.cdp.deg.24 %>%  
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE, force = 3) +
+        geom_point(data=subset(bysvsMock.cdp.deg.24,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3) +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-2, 3) +
         ggtitle('CDP - 24HPI - Bystander vs Mock-Infected')
@@ -487,25 +561,33 @@ bysvsMock.cdp.plot.24 <- bysvsMock.cdp.deg.24 %>%
 
 
 ```{r mdp_24hr_vulcano_plots}
-Idents(sc.seurat) <- as.character(sc.seurat$Bystander)
+#Idents(sc.seurat) <- as.character(sc.seurat$Bystander)
 infvsBys.mdp.deg.24 <- sc.seurat %>%
   subset(progenitor=='MDP' & plate_number=='P196') %>%
   subset(Bystander != 'Mock-Infected') %>%
   FindMarkers(ident.1='Infected') %>%
-  arrange(desc(abs(avg_log2FC)))
-infvsBys.mdp.plot.24 <- infvsBys.mdp.deg.24 %>%
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
   mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.9  & p_val < 0.05),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+infvsBys.mdp.plot.24 <- infvsBys.mdp.deg.24 %>%
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(infvsBys.mdp.deg.24,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3.5) +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-2, 2) +
         ggtitle('MDP - 24HPI - Infected vs Bystander')
@@ -515,23 +597,31 @@ infvsMock.mdp.deg.24 <- sc.seurat %>%
   subset(progenitor=='MDP' & plate_number=='P196') %>%
   subset(Bystander != 'Bystander') %>%
   FindMarkers(ident.1='Infected') %>%
-  arrange(desc(abs(avg_log2FC)))
-infvsMock.mdp.plot.24 <- infvsMock.mdp.deg.24 %>%  
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
   mutate(highlight=ifelse( ( avg_log2FC < -1  & p_val < 0.05 ) |
                              ( avg_log2FC > 1.75  & p_val < 0.05 ),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+infvsMock.mdp.plot.24 <- infvsMock.mdp.deg.24 %>%  
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(infvsMock.mdp.deg.24,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3.5) +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
-        xlim(-3, 3) +
+        xlim(-2, 2) +
         ggtitle('MDP - 24HPI - Infected vs Mock-Infected')
 
 
@@ -539,20 +629,28 @@ bysvsMock.mdp.deg.24 <- sc.seurat %>%
   subset(progenitor=='MDP' & plate_number=='P196') %>%
   subset(Bystander != 'Infected') %>%
   FindMarkers(ident.1='Bystander') %>%
-  arrange(desc(abs(avg_log2FC)))
-bysvsMock.mdp.plot.24 <- bysvsMock.mdp.deg.24 %>%  
+  arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
-  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1.1  & p_val < 0.05),
-                           TRUE, FALSE)) %>%
-  mutate(label=ifelse(highlight==TRUE, gene, '')) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1.1  & p_val < 0.05 ),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+bysvsMock.mdp.plot.24 <- bysvsMock.mdp.deg.24 %>%  
   ggplot(aes(x=avg_log2FC, y=-log10(p_val),
              colour=highlight,
              label=label)) +
         geom_point(show.legend = FALSE) +
-        geom_text_repel(show.legend=FALSE) +
+        geom_point(data=subset(bysvsMock.mdp.deg.24,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3.5) +
         theme(legend.position = 'none') +
-        scale_color_manual(values = c('salmon', 'black')) +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
         theme_classic() +
         xlim(-4.5, 4.5) +
         ggtitle('MDP - 24HPI - Bystander vs Mock-Infected')
@@ -571,12 +669,315 @@ gridExtra::grid.arrange(
 )
 ```
 
+## Markers expression
+
+The next dotplots show gene expression of the top 15 with highest positive FC and the same
+for the negative (summing up 30 genes) and for which p-vals are less than 0.05. 
+
+### 1 hpi (Plate 193)
+
+```{r, fig.height=16, fig.width=16}
+degs <- list(infvsBys.cdp.deg=infvsBys.cdp.deg, 
+             infvsMock.cdp.deg=infvsMock.cdp.deg, 
+             bysvsMock.cdp.deg=bysvsMock.cdp.deg,
+             infvsBys.mdp.deg=infvsBys.mdp.deg, 
+             infvsMock.mdp.deg=infvsMock.mdp.deg, 
+             bysvsMock.mdp.deg=bysvsMock.mdp.deg,
+             infvsBys.cdp.deg.24=infvsBys.cdp.deg.24, 
+             infvsMock.cdp.deg.24=infvsMock.cdp.deg.24, 
+             bysvsMock.cdp.deg.24=bysvsMock.cdp.deg.24,
+             infvsBys.mdp.deg.24=infvsBys.mdp.deg.24, 
+             infvsMock.mdp.deg.24=infvsMock.mdp.deg.24, 
+             bysvsMock.mdp.deg.24=bysvsMock.mdp.deg.24)
+degs.filtered <- lapply(degs, function(x) filter(x, p_val < 0.05) %>%
+                          arrange(desc(avg_log2FC)))
+
+n_markers <- 15
+
+# CDP - 1HPI - Infected vs Bystander
+infvsBys.cdp.1hpi.hmap <- DoHeatmap(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P193' & 
+                    Bystander != 'Mock-Infected'), 
+  features = c(head(degs.filtered$infvsBys.cdp.deg$gene, n_markers),
+               tail(degs.filtered$infvsBys.cdp.deg$gene, n_markers)), 
+  draw.lines = FALSE, 
+  size = 3, 
+  angle = 0, combine = TRUE
+) + scale_fill_viridis() +
+  theme(legend.position = 'none') +
+  ggtitle('CDP - 1HPI - Infected vs Bystander')
+
+
+# CDP - 1HPI - Infected vs Mock
+infvsMock.cdp.1hpi.hmap <- DoHeatmap(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P193' & 
+                    Bystander != 'Bystander'), 
+  features = c(head(degs.filtered$infvsMock.cdp.deg$gene, n_markers),
+               tail(degs.filtered$infvsMock.cdp.deg$gene, n_markers)), 
+  draw.lines = FALSE, 
+  size = 3, 
+  angle = 0, combine = TRUE
+) + scale_fill_viridis() +
+  theme(legend.position = 'none') +
+  ggtitle('CDP - 1HPI - Infected vs Mock')
+
+##############################################################################################
+
+## CDP - 1HPI - Infected vs Bystander
+infvsBys.cdp.1hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P193' & 
+                    Bystander != 'Mock-Infected'), 
+  features = c(head(degs.filtered$infvsBys.cdp.deg$gene, n_markers),
+               tail(degs.filtered$infvsBys.cdp.deg$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP - 1HPI - Infected vs Bystander')
+
+
+## CDP - 1HPI - Infected vs Mock-Infected
+infvsMock.cdp.1hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P193' & 
+                    Bystander != 'Bystander'), 
+  features = c(head(degs.filtered$infvsMock.cdp.deg$gene, n_markers),
+               tail(degs.filtered$infvsMock.cdp.deg$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP - 1HPI - Infected vs Mock')
+
+
+## CDP - 1HPI - Bystander vs Mock-Infected
+BysvsMock.cdp.1hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P193' & 
+                    Bystander != 'Infected'), 
+  features = c(head(degs.filtered$bysvsMock.cdp.deg$gene, n_markers),
+               tail(degs.filtered$bysvsMock.cdp.deg$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP - 1HPI - Infected vs Mock')
+
+###################################################################################
+
+## CDP - 1HPI - Infected vs Bystander
+infvsBys.mdp.1hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='MDP' & 
+                    plate_number=='P193' & 
+                    Bystander != 'Mock-Infected'), 
+  features = c(head(degs.filtered$infvsBys.mdp.deg$gene, n_markers),
+               tail(degs.filtered$infvsBys.mdp.deg$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('MDP - 1HPI - Infected vs Bystander')
+
+
+## CDP - 1HPI - Infected vs Mock-Infected
+infvsMock.mdp.1hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='MDP' & 
+                    plate_number=='P193' & 
+                    Bystander != 'Bystander'), 
+  features = c(head(degs.filtered$infvsMock.mdp.deg$gene, n_markers),
+               tail(degs.filtered$infvsMock.mdp.deg$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('MDP - 1HPI - Infected vs Mock')
+
+
+## CDP - 1HPI - Bystander vs Mock-Infected
+BysvsMock.mdp.1hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='MDP' & 
+                    plate_number=='P193' & 
+                    Bystander != 'Infected'), 
+  features = c(head(degs.filtered$bysvsMock.mdp.deg$gene, n_markers),
+               tail(degs.filtered$bysvsMock.mdp.deg$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('MDP - 1HPI - Infected vs Mock')
+
+
+###################################################################################
+## 1 HPI - Dot plots
+gridExtra::grid.arrange(
+  infvsBys.cdp.1hpi.dotplot,
+  infvsMock.cdp.1hpi.dotplot,
+  BysvsMock.cdp.1hpi.dotplot, 
+  infvsBys.mdp.1hpi.dotplot,
+  infvsMock.mdp.1hpi.dotplot,
+  BysvsMock.mdp.1hpi.dotplot,
+  ncol=3
+)
+```
+
+
+### 24 hpi (Plate 196)
+
+
+```{r, fig.height=16, fig.width=16}
+# CDP - 24HPI - Infected vs Bystander
+infvsBys.cdp.24hpi.dotplot <- DoHeatmap(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P196' & 
+                    Bystander != 'Mock-Infected'), 
+  features = c(head(degs.filtered$infvsBys.cdp.deg.24$gene, n_markers),
+               tail(degs.filtered$infvsBys.cdp.deg.24$gene, n_markers)), 
+  draw.lines = FALSE, 
+  size = 3, 
+  angle = 0, combine = TRUE
+) + scale_fill_viridis() +
+  theme(legend.position = 'none') +
+  ggtitle('CDP - 24HPI - Infected vs Bystander')
+
+
+# CDP - 24HPI - Infected vs Mock
+infvsMock.cdp.24hpi.dotplot <- DoHeatmap(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P196' & 
+                    Bystander != 'Bystander'), 
+  features = c(head(degs.filtered$infvsMock.cdp.deg.24$gene, n_markers),
+               tail(degs.filtered$infvsMock.cdp.deg.24$gene, n_markers)), 
+  draw.lines = FALSE, 
+  size = 3, 
+  angle = 0, combine = TRUE
+) + scale_fill_viridis() +
+  theme(legend.position = 'none') +
+  ggtitle('CDP - 24HPI - Infected vs Mock')
+
+##############################################################################################
+
+## CDP - 24HPI - Infected vs Bystander
+infvsBys.cdp.24hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P196' & 
+                    Bystander != 'Mock-Infected'), 
+  features = c(head(degs.filtered$infvsBys.cdp.deg.24$gene, n_markers),
+               tail(degs.filtered$infvsBys.cdp.deg.24$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP - 24HPI - Infected vs Bystander')
+
+
+## CDP - 24HPI - Infected vs Mock-Infected
+infvsMock.cdp.24hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P196' & 
+                    Bystander != 'Bystander'), 
+  features = c(head(degs.filtered$infvsMock.cdp.deg.24$gene, n_markers),
+               tail(degs.filtered$infvsMock.cdp.deg.24$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP - 24HPI - Infected vs Mock')
+
+
+## CDP - 24HPI - Bystander vs Mock-Infected
+BysvsMock.cdp.24hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='CDP' & 
+                    plate_number=='P196' & 
+                    Bystander != 'Infected'), 
+  features = degs.filtered$bysvsMock.cdp.deg.24$gene
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP - 24HPI - Infected vs Mock')
+
+###################################################################################
+
+## CDP - 24HPI - Infected vs Bystander
+infvsBys.mdp.24hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='MDP' & 
+                    plate_number=='P196' & 
+                    Bystander != 'Mock-Infected'), 
+  features = degs.filtered$infvsBys.mdp.deg.24$gene
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('MDP - 24HPI - Infected vs Bystander')
+
+
+## CDP - 24HPI - Infected vs Mock-Infected
+infvsMock.mdp.24hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='MDP' & 
+                    plate_number=='P196' & 
+                    Bystander != 'Bystander'), 
+  features = c(head(degs.filtered$infvsMock.mdp.deg.24$gene, n_markers),
+               tail(degs.filtered$infvsMock.mdp.deg.24$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('MDP - 24HPI - Infected vs Mock')
+
+
+## CDP - 24HPI - Bystander vs Mock-Infected
+BysvsMock.mdp.24hpi.dotplot <- DotPlot(
+  object = subset(sc.seurat, 
+                  progenitor=='MDP' & 
+                    plate_number=='P196' & 
+                    Bystander != 'Infected'), 
+  features = c(head(degs.filtered$bysvsMock.mdp.deg.24$gene, n_markers),
+               tail(degs.filtered$bysvsMock.mdp.deg.24$gene, n_markers))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('MDP - 24HPI - Bystander vs Mock')
+
+
+###################################################################################
+## 1 HPI - Dot plots
+gridExtra::grid.arrange(
+  infvsBys.cdp.24hpi.dotplot,
+  infvsMock.cdp.24hpi.dotplot,
+  BysvsMock.cdp.24hpi.dotplot, 
+  infvsBys.mdp.24hpi.dotplot,
+  infvsMock.mdp.24hpi.dotplot,
+  BysvsMock.mdp.24hpi.dotplot,
+  ncol=3
+)
+```
+
 
 # Additional tables
 
-The next tables show all the genes in the DEAs with p-val < 0.05.
+The next tables exhaustively list all the genes in the DEGs for each comparison having 
+p-val < 0.05.
 
-## 1 HPI
+## 1 HPI (Plate 193)
 
 ### CDPs. 
 
@@ -635,7 +1036,7 @@ infvsMock.mdp.deg %>%
 ```
 
 
-## 24 HPI
+## 24 HPI (Plate 196)
 
 
 ### CDPs. 
