@@ -31,6 +31,9 @@ library(rmarkdown)
 library(Seurat)
 library(ggrepel)
 library(viridis)
+library(destiny)
+
+set.seed(333)
 
 knitr::opts_chunk$set(
         warning = FALSE, 
@@ -217,7 +220,7 @@ sc.seurat$Bystander <- plyr::mapvalues(
   to = c('Bystander', 'Infected', 'Mock-Infected')
 )
 sc.seurat@meta.data %>%
-  select(treatment, bacteria_attached, Bystander) %>%
+  dplyr::select(treatment, bacteria_attached, Bystander) %>%
   table() %>%
   as.data.frame() %>%
   filter(Freq > 0) %>%
@@ -234,7 +237,7 @@ infection status and the type of progenitor.
 ```{r}
 sc.seurat@meta.data %>%
   filter(plate_number=='P193') %>%
-  select(Bystander, progenitor) %>%
+  dplyr::select(Bystander, progenitor) %>%
   table() %>%
   as.data.frame() %>%
   filter(Freq>0) %>%
@@ -971,6 +974,173 @@ gridExtra::grid.arrange(
 )
 ```
 
+
+# Ordering cells
+
+We were interested in the dynamical behavior of cells during the infection 
+process. Then, we projected the cells into diffusion maps and ordered them
+according to pseudotime. The next diffusion maps show the projection of 
+CDP and MDP derived DCs at 1 hpi (top left and right) and CDP and MDP
+derived DCs at 24 hpi (bottom left and right).
+To calculate the difussion maps significant DEGs between Infected, Bystander 
+and  Mock-Infected cells for the corresponding subset of cells were used. 
+The destiny R package were used with parameters n_pcs=50 and n_eigs=50.
+The dimensions DC1 and DC2 represent the first two eigenvectors of the 
+Markovian transition matrix.
+
+NOTE: here the set of DEGs are calculated in a different manner from 
+the DEA above. For the categories Infected, Bystander and Mock-Infected
+the categories are tested each vs the rest and then DEGs are merged.
+
+```{r, fig.width=10, fig.height=8}
+## 1 hpi - CDP
+cdp.1hpi <- subset(sc.seurat,
+                      plate_number == 'P193' &
+                        progenitor == 'CDP')
+Idents(cdp.1hpi) <- cdp.1hpi$Bystander
+degs.1hpi <- FindAllMarkers(cdp.1hpi)
+degs.1hpi <- subset(degs.1hpi, p_val < 0.05)
+eset <- ExpressionSet(
+  assayData = cdp.1hpi@assays$RNA@scale.data,
+  phenoData = AnnotatedDataFrame(cdp.1hpi@meta.data)
+)
+
+difmap.1hpi <- DiffusionMap(eset, 
+                       vars = degs.1hpi$gene,
+                       n_pcs = 50, 
+                       n_eigs = 50)
+
+res <- cbind(difmap.1hpi@data_env$data@phenoData@data, 
+             DC1=difmap.1hpi$DC1,
+             DC2=difmap.1hpi$DC2,
+             DC3=difmap.1hpi$DC3,
+             DC4=difmap.1hpi$DC4) 
+
+
+cdp.1hpi <- res %>% ggplot(aes(x=DC1, y=-DC2,
+                   colour=Bystander)) +
+        geom_point(size=2.5, alpha=0.7) + 
+        theme_classic() +
+        labs(colour='') +
+        ggtitle('CDP - 1 hpi')
+
+#####################################################################
+## 1 hpi - MDP
+mdp.1hpi <- subset(sc.seurat,
+                      plate_number == 'P193' &
+                        progenitor == 'MDP')
+Idents(mdp.1hpi) <- mdp.1hpi$Bystander
+degs.1hpi <- FindAllMarkers(mdp.1hpi)
+degs.1hpi <- subset(degs.1hpi, p_val < 0.05)
+eset <- ExpressionSet(
+  assayData = mdp.1hpi@assays$RNA@scale.data,
+  phenoData = AnnotatedDataFrame(mdp.1hpi@meta.data)
+)
+
+difmap.1hpi <- DiffusionMap(eset, 
+                       vars = degs.1hpi$gene,
+                       n_pcs = 50, 
+                       n_eigs = 50)
+
+res <- cbind(difmap.1hpi@data_env$data@phenoData@data, 
+             DC1=difmap.1hpi$DC1,
+             DC2=difmap.1hpi$DC2,
+             DC3=difmap.1hpi$DC3,
+             DC4=difmap.1hpi$DC4) 
+
+my_theme <- theme_bw() +
+                theme(panel.grid = element_blank()) 
+
+mdp.1hpi <- res %>% ggplot(aes(x=DC1, y=DC2,
+                   colour=Bystander)) +
+        geom_point(size=2.5, alpha=0.7) +
+        theme_classic() +
+        labs(colour='') +
+        ggtitle('MDP - 1 hpi')
+
+
+#########################################################################
+
+## 24 hpi - CDP
+cdp.24hpi <- subset(sc.seurat,
+                      plate_number == 'P196' &
+                        progenitor == 'CDP')
+Idents(cdp.24hpi) <- cdp.24hpi$Bystander
+degs.24hpi <- FindAllMarkers(cdp.24hpi)
+degs.24hpi <- subset(degs.24hpi, p_val < 0.05)
+eset <- ExpressionSet(
+  assayData = cdp.24hpi@assays$RNA@scale.data,
+  phenoData = AnnotatedDataFrame(cdp.24hpi@meta.data)
+)
+
+difmap.24hpi <- DiffusionMap(eset, 
+                       vars = degs.24hpi$gene,
+                       n_pcs = 50, 
+                       n_eigs = 50)
+
+res <- cbind(difmap.24hpi@data_env$data@phenoData@data, 
+             DC1=difmap.24hpi$DC1,
+             DC2=difmap.24hpi$DC2,
+             DC3=difmap.24hpi$DC3,
+             DC4=difmap.24hpi$DC4) 
+
+
+cdp.24hpi <- res %>% ggplot(aes(x=DC1, y=DC2,
+                   colour=Bystander)) +
+        geom_point(size=2.5, alpha=0.7) + 
+        theme_classic() +
+        labs(colour='') +
+        ggtitle('CDP - 24 hpi')
+
+#####################################################################
+## 24 hpi - MDP
+mdp.24hpi <- subset(sc.seurat,
+                      plate_number == 'P196' &
+                        progenitor == 'MDP')
+Idents(mdp.24hpi) <- mdp.24hpi$Bystander
+degs.24hpi <- FindAllMarkers(mdp.24hpi)
+degs.24hpi <- subset(degs.24hpi, p_val < 0.05)
+eset <- ExpressionSet(
+  assayData = mdp.24hpi@assays$RNA@scale.data,
+  phenoData = AnnotatedDataFrame(mdp.24hpi@meta.data)
+)
+
+difmap.24hpi <- DiffusionMap(eset, 
+                       vars = degs.24hpi$gene,
+                       n_pcs = 23, 
+                       n_eigs = 23, 
+                       k = 30)
+
+res <- cbind(difmap.24hpi@data_env$data@phenoData@data, 
+             DC1=difmap.24hpi$DC1,
+             DC2=difmap.24hpi$DC2,
+             DC3=difmap.24hpi$DC3,
+             DC4=difmap.24hpi$DC4) 
+
+my_theme <- theme_bw() +
+                theme(panel.grid = element_blank()) 
+
+mdp.24hpi <- res %>% ggplot(aes(x=DC1, y=DC2,
+                   colour=Bystander)) +
+        geom_point(size=2.5, alpha=0.7) +
+        theme_classic() +
+        labs(colour='') +
+        ggtitle('MDP - 24 hpi')
+
+
+
+gridExtra::grid.arrange(
+  cdp.1hpi,
+  mdp.1hpi,
+  cdp.24hpi,
+  mdp.24hpi,
+  ncol=2
+)
+```
+
+From this analysis, two clear branches can be observed for Infected and Bystander cells
+which suggest different underlying signatures in each subsets. Bystander cells are more
+similar to Mock-Infected control cells as expected.
 
 # Additional tables
 
