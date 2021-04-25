@@ -32,6 +32,7 @@ library(Seurat)
 library(ggrepel)
 library(viridis)
 library(destiny)
+library(enrichR)
 
 set.seed(333)
 
@@ -51,7 +52,7 @@ knitr::opts_knit$set(
 
 # Demultiplexed counts
 
-The folowing table shows annotations and quality metrics for all the wells in the 
+The folowing table shows annotations and quality metrics for all the wells in the
 dataset. 
 
 ```{r, settings}
@@ -975,6 +976,59 @@ gridExtra::grid.arrange(
 ```
 
 
+# GSEA {.tabset}
+
+We performed a gene set enrichment analysis using all DEGs for each condition. The
+enriched gene sets are shown in the next plots. The dataset MSigDB_Hallmark_2020
+was used for the analysis.
+
+
+```{r, GSEA, fig.align='center', results='hide'}
+gsea.list <- lapply(degs.filtered, 
+       function(x) {
+         degs <- dplyr::select(x, gene) %>%
+                      unlist()
+         enrichr(degs, databases = "MSigDB_Hallmark_2020")
+       }
+)
+
+
+gsea.plot <- lapply(names(gsea.list), 
+                       function(x) 
+                         plotEnrich(gsea.list[x][[1]]$MSigDB_Hallmark_2020, 
+                                    showTerms = 20, 
+                                    numChar = 100, 
+                                    y = "Count", 
+                                    orderBy = "Count") +
+                              scale_fill_viridis() +
+                              xlab('') +
+                              ggtitle(x)
+)
+names(gsea.plot) <- names(gsea.list)
+```
+
+
+```{r, GSEA_plot, results = "asis", fig.align='center'}
+names(gsea.plot) <- c('Infected vs Bystander - CDP - 1HPI',
+                      'Infected vs Mock - CDP - 1HPI',
+                      'Bystander vs Mock - CDP - 1HPI',
+                      'Infected vs Bystander - MDP - 1HPI',
+                      'Infected vs Mock - MDP - 1HPI',
+                      'Bystander vs Mock - MDP - 1HPI',
+                      'Infected vs Bystander - CDP - 24HPI',
+                      'Infected vs Mock - CDP - 24HPI',
+                      'Bystander vs Mock - CDP - 24HPI',
+                      'Infected vs Bystander - MDP - 24HPI',
+                      'Infected vs Mock - MDP - 24HPI',
+                      'Bystander vs Mock - MDP - 24HPI')
+for (i in 1:length(gsea.plot)) {
+    cat(paste0('## ', names(gsea.plot)[i], '\n\n'))
+    print(gsea.plot[i][[1]])
+    cat(' \n\n')
+}
+```
+
+
 # Ordering cells
 
 We were interested in the dynamical behavior of cells during the infection 
@@ -990,7 +1044,7 @@ Markovian transition matrix.
 
 NOTE: here the set of DEGs are calculated in a different manner from 
 the DEA above. For the categories Infected, Bystander and Mock-Infected
-the categories are tested each vs the rest and then DEGs are merged.
+the categories are tested each *vs* the rest and then DEGs are merged.
 
 ```{r, fig.width=10, fig.height=8}
 ## 1 hpi - CDP
@@ -1010,14 +1064,14 @@ difmap.1hpi <- DiffusionMap(eset,
                        n_pcs = 50, 
                        n_eigs = 50)
 
-res <- cbind(difmap.1hpi@data_env$data@phenoData@data, 
+res.cdp.1hpi <- cbind(difmap.1hpi@data_env$data@phenoData@data, 
              DC1=difmap.1hpi$DC1,
              DC2=difmap.1hpi$DC2,
              DC3=difmap.1hpi$DC3,
              DC4=difmap.1hpi$DC4) 
 
 
-cdp.1hpi <- res %>% ggplot(aes(x=DC1, y=-DC2,
+cdp.1hpi <- res.cdp.1hpi %>% ggplot(aes(x=DC1, y=-DC2,
                    colour=Bystander)) +
         geom_point(size=2.5, alpha=0.7) + 
         theme_classic() +
@@ -1042,16 +1096,13 @@ difmap.1hpi <- DiffusionMap(eset,
                        n_pcs = 50, 
                        n_eigs = 50)
 
-res <- cbind(difmap.1hpi@data_env$data@phenoData@data, 
+res.mdp.1hpi <- cbind(difmap.1hpi@data_env$data@phenoData@data, 
              DC1=difmap.1hpi$DC1,
              DC2=difmap.1hpi$DC2,
              DC3=difmap.1hpi$DC3,
              DC4=difmap.1hpi$DC4) 
 
-my_theme <- theme_bw() +
-                theme(panel.grid = element_blank()) 
-
-mdp.1hpi <- res %>% ggplot(aes(x=DC1, y=DC2,
+mdp.1hpi <- res.mdp.1hpi %>% ggplot(aes(x=DC1, y=DC2,
                    colour=Bystander)) +
         geom_point(size=2.5, alpha=0.7) +
         theme_classic() +
@@ -1078,14 +1129,14 @@ difmap.24hpi <- DiffusionMap(eset,
                        n_pcs = 50, 
                        n_eigs = 50)
 
-res <- cbind(difmap.24hpi@data_env$data@phenoData@data, 
+res.cdp.24hpi <- cbind(difmap.24hpi@data_env$data@phenoData@data, 
              DC1=difmap.24hpi$DC1,
              DC2=difmap.24hpi$DC2,
              DC3=difmap.24hpi$DC3,
              DC4=difmap.24hpi$DC4) 
 
 
-cdp.24hpi <- res %>% ggplot(aes(x=DC1, y=DC2,
+cdp.24hpi <- res.cdp.24hpi %>% ggplot(aes(x=DC1, y=DC2,
                    colour=Bystander)) +
         geom_point(size=2.5, alpha=0.7) + 
         theme_classic() +
@@ -1111,7 +1162,7 @@ difmap.24hpi <- DiffusionMap(eset,
                        n_eigs = 23, 
                        k = 30)
 
-res <- cbind(difmap.24hpi@data_env$data@phenoData@data, 
+res.mdp.24hpi <- cbind(difmap.24hpi@data_env$data@phenoData@data, 
              DC1=difmap.24hpi$DC1,
              DC2=difmap.24hpi$DC2,
              DC3=difmap.24hpi$DC3,
@@ -1120,13 +1171,12 @@ res <- cbind(difmap.24hpi@data_env$data@phenoData@data,
 my_theme <- theme_bw() +
                 theme(panel.grid = element_blank()) 
 
-mdp.24hpi <- res %>% ggplot(aes(x=DC1, y=DC2,
+mdp.24hpi <- res.mdp.24hpi %>% ggplot(aes(x=DC1, y=DC2,
                    colour=Bystander)) +
         geom_point(size=2.5, alpha=0.7) +
         theme_classic() +
         labs(colour='') +
         ggtitle('MDP - 24 hpi')
-
 
 
 gridExtra::grid.arrange(
@@ -1141,6 +1191,23 @@ gridExtra::grid.arrange(
 From this analysis, two clear branches can be observed for Infected and Bystander cells
 which suggest different underlying signatures in each subsets. Bystander cells are more
 similar to Mock-Infected control cells as expected.
+
+## Network Inference
+
+```{r, eval=FALSE}
+## Normalizing and saving data
+dir.create('data/scenic_input')
+sc.seurat <- SCTransform(sc.seurat, variable.features.n = 4000)
+sc.seurat@assays$SCT@scale.data %>%
+  t() %>%
+  write.table('data/scenic_input/DC_single_cells.tsv', 
+              sep = '\t')
+```
+
+```{r, loading_scenic_results, eval=FALSE}
+tfa <- read_csv('analysis/scenic/aucell.csv') 
+tfa
+```
 
 # Additional tables
 
