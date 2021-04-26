@@ -2,7 +2,8 @@
 title: "Explorative Data Analysis of DCs infected with Yersinia scRNA-Seq data"
 author: "Health Data Unit"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
-output: 
+output:
+  pdf_document: default
   html_document:
     code_folding: hide
 ---
@@ -24,7 +25,6 @@ Data were preprocessed as shown in the `reports/scPipe_QC_workflow.Rmd` file.
 
 ```{r setup, include=FALSE}
 ## Dependencies
-library(dplyr)
 library(scPipe)
 library(ggplot2)
 library(rmarkdown)
@@ -33,6 +33,7 @@ library(ggrepel)
 library(viridis)
 library(destiny)
 library(enrichR)
+library(dplyr)
 
 set.seed(333)
 
@@ -1171,7 +1172,7 @@ res.mdp.24hpi <- cbind(difmap.24hpi@data_env$data@phenoData@data,
 my_theme <- theme_bw() +
                 theme(panel.grid = element_blank()) 
 
-mdp.24hpi <- res.mdp.24hpi %>% ggplot(aes(x=DC1, y=DC2,
+mdp.24hpi <- res.mdp.24hpi %>% ggplot(aes(x=DC1, y=-DC2,
                    colour=Bystander)) +
         geom_point(size=2.5, alpha=0.7) +
         theme_classic() +
@@ -1192,7 +1193,15 @@ From this analysis, two clear branches can be observed for Infected and Bystande
 which suggest different underlying signatures in each subsets. Bystander cells are more
 similar to Mock-Infected control cells as expected.
 
-## Network Inference
+## Transcription factor activity {.tabset}
+
+
+Then, Transcription factor activities (TFA) were correlated to the pseudotime in the 
+diffusion maps. We focused in the Diffusion Component 1 (DC1) since it can
+be seen that Infected, Bystander and Mock-Infected are ordered along this
+axis. The following joystick plots show the spearman correlations between TF 
+activities and DC1. 
+
 
 ```{r, eval=FALSE}
 ## Normalizing and saving data
@@ -1204,10 +1213,182 @@ sc.seurat@assays$SCT@scale.data %>%
               sep = '\t')
 ```
 
-```{r, loading_scenic_results, eval=FALSE}
-tfa <- read_csv('analysis/scenic/aucell.csv') 
-tfa
+
+
+```{r, loading_scenic_results}
+tfa <- read.csv('analysis/scenic/aucell.csv') 
+## Collecting Diffusion maps 
+dif.maps <- list(res.cdp.1hpi=res.cdp.1hpi,
+                 res.mdp.1hpi=res.mdp.1hpi,
+                 res.cdp.24hpi=res.cdp.24hpi,
+                 res.mdp.24hpi=res.mdp.24hpi)
+
+comps <- c('DC1', 'DC2', 'DC3', 'DC4')
+tfs <- grep('\\.', colnames(tfa), value = TRUE)
+cor.dc1.plots <- lapply(names(dif.maps), 
+       function(x) {
+         df <- add_rownames(dif.maps[x][[1]], var = 'Cell')
+         tfa.pstime <- merge(df, tfa, by='Cell')
+         mtx <- tfa.pstime[, c(comps, tfs)]
+         mtx.cor <- cor(mtx, method = 'spearman')
+         mtx.cor %>%
+          as.data.frame() %>%
+           arrange(desc(abs(DC1))) %>%
+           add_rownames(var='TF') %>%
+           dplyr::filter(! TF %in% c(comps)) %>%
+           dplyr::mutate(rank=1:n()) %>%
+           dplyr::mutate(TF=gsub('\\.', '', TF)) %>%
+           dplyr::mutate(highlight=ifelse(rank<80, TRUE, FALSE)) %>%
+           dplyr::mutate(gene_label=ifelse(highlight==TRUE, TF, '')) %>%
+           ggplot(aes(x=rank, y=abs(DC1),
+                      colour=highlight, 
+                      label=gene_label)) +
+                  geom_point() +
+                  geom_text_repel() +
+                  theme_bw() +
+                  theme(legend.position = 'none', 
+                        panel.grid = element_blank()) +
+                  labs(x='Rank', y='Abs(Cor(TFA, DC1))')+
+                  ggtitle(x)
+       }
+)
+names(cor.dc1.plots) <- gsub('red', '', names(dif.maps))
 ```
+
+
+```{r, results='asis'}
+for (name in names(cor.dc1.plots)) {
+  cat('### ', name, '\n\n')
+  print(cor.dc1.plots[name][[1]])
+  cat(' \n\n')
+}
+```
+
+
+We can observe, that for example Spi1 and Jun are TFs present in the top
+most correlated to DC1. 
+
+## TFA projection on pseudotime
+
+
+We wanted to visualize the dynamic changes of TFA across the cells. Then, TFA were
+projected over the previously inferred pseudotime trajectories. The next Diffusion 
+maps show the expression of Jun along the trajectories.
+
+## Spi1 TFA
+
+```{r, fig.width=10, fig.height=8}
+pseudo.tfa.list <- lapply(names(dif.maps), 
+       function(x) {
+         df <- add_rownames(dif.maps[x][[1]], var = 'Cell')
+         tfa.pstime <- merge(df, tfa, by='Cell')
+         mtx <- dplyr::select(tfa.pstime, DC1:`Zfp597...`)
+         mtx 
+       }
+)
+names(pseudo.tfa.list) <- gsub('res.', '', names(dif.maps))
+
+cdp.1hp.sp1 <- pseudo.tfa.list[1][[1]] %>%
+  ggplot(aes(x=DC1, y=-DC2,
+             colour=`Spi1...`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(pseudo.tfa.list)[1])
+
+mdp.1hp.sp1 <- pseudo.tfa.list[2][[1]] %>%
+  ggplot(aes(x=DC1, y=DC2,
+             colour=`Spi1...`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(pseudo.tfa.list)[2])
+
+cdp.24hp.sp1 <- pseudo.tfa.list[3][[1]] %>%
+  ggplot(aes(x=DC1, y=DC2,
+             colour=`Spi1...`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(pseudo.tfa.list)[3])
+
+mdp.24hp.sp1 <- pseudo.tfa.list[4][[1]] %>%
+  ggplot(aes(x=DC1, y=-DC2,
+             colour=`Spi1...`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(pseudo.tfa.list)[4])
+
+gridExtra::grid.arrange(
+  cdp.1hp.sp1,
+  mdp.1hp.sp1,
+  cdp.24hp.sp1,
+  mdp.24hp.sp1,
+  ncol=2
+)
+```
+
+
+## Jun TFA
+
+
+```{r, fig.width=10, fig.height=8}
+pseudo.tfa.list <- lapply(names(dif.maps), 
+       function(x) {
+         df <- add_rownames(dif.maps[x][[1]], var = 'Cell')
+         tfa.pstime <- merge(df, tfa, by='Cell')
+         mtx <- dplyr::select(tfa.pstime, DC1:`Zfp597...`)
+         mtx 
+       }
+)
+names(pseudo.tfa.list) <- gsub('res.', '', names(dif.maps))
+
+cdp.1hp.jun <- pseudo.tfa.list[1][[1]] %>%
+  ggplot(aes(x=DC1, y=-DC2,
+             colour=`Jun...`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(pseudo.tfa.list)[1])
+
+mdp.1hp.jun <- pseudo.tfa.list[2][[1]] %>%
+  ggplot(aes(x=DC1, y=DC2,
+             colour=`Jun...`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(pseudo.tfa.list)[2])
+
+cdp.24hp.jun <- pseudo.tfa.list[3][[1]] %>%
+  ggplot(aes(x=DC1, y=DC2,
+             colour=`Jun...`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(pseudo.tfa.list)[3])
+
+mdp.24hp.jun <- pseudo.tfa.list[4][[1]] %>%
+  ggplot(aes(x=DC1, y=-DC2,
+             colour=`Jun...`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(pseudo.tfa.list)[4])
+
+gridExtra::grid.arrange(
+  cdp.1hp.jun,
+  mdp.1hp.jun,
+  cdp.24hp.jun,
+  mdp.24hp.jun,
+  ncol=2
+)
+```
+
+
+It can be seen that Jun is more active in the infected cells compared to bystander
+and non-infected mock cells.
+
 
 # Additional tables
 
