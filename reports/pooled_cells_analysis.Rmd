@@ -1,0 +1,573 @@
+---
+title: "Analysis of pooled cells"
+author: "Health Data Unit"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: hide
+  pdf_document: default
+---
+
+
+This R markdown provides documentation about the analysis of pooled Dendritic Cells (DCs) infected
+with *Yersinia enterocolitica* provided by the Department of Internal Medicine II, University of 
+Tübingen, Germany.
+
+From the scRNA-Seq analysis the following observations were done:
+
+*i)* Bystander cells cluster together with mock-infected cells in MDP, but with infected cells
+in MDP at 1 hpi.
+
+*ii)* Spi1 is more active in infected CDP cells at 1 hpi.
+
+*iii)* Jun is more active in bystander cells in CDPs at 1 hpi.
+
+*iv)* DEA reveals different gene expression patterns in infected, bystander and mock-infected
+cells.
+
+
+In order to validate these observations we further analyze RNA-Seq data from pooled
+cells.
+
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(rmarkdown)
+library(reshape2)
+library(Seurat)
+library(ggrepel)
+library(pheatmap)
+library(viridis)
+library(gridExtra)
+
+set.seed(333)
+
+knitr::opts_chunk$set(
+        warning = FALSE, 
+        message = FALSE,
+        cache = FALSE,
+        fig.align='center'
+)
+
+## Setting paths
+path2project <- '/media/ag-cherrmann/cramirez/interaction_DC-pathogens/'
+knitr::opts_knit$set(
+        root.dir = path2project
+)
+```
+
+
+
+```{r, settings}
+## Loading data
+seurat <- readRDS('data/yersinia_seurat.rds')
+
+## Reading processed annotations
+anns <- readxl::read_xlsx('data/20201214 C025_sample_sheet_SEA.xlsx') %>%
+            as.data.frame()
+rownames(anns) <- with(anns, paste0(plate_number, '_', well_position))
+## Adding annotations
+anns <- anns[rownames(seurat@meta.data), ]
+anns <- anns[, c("progenitor_type: 'CDP' or 'MDP'",
+                 "bacteria: 'HK Ye' or 'Ye' or 'no Ye'",
+                 "treatment: A-untreated; B-MOI 1; C-MOI 0.1; D-MOI 0.01",
+                 "bacteria_attached: '+' or '-'",
+                 'infection_time')]
+colnames(anns)[1:4] <- c('progenitor', 'bacteria', 'treatment', 'bacteria_attached')
+## row order check
+#any(rownames(anns) != rownames(seurat@meta.data))
+seurat@meta.data <- cbind(seurat@meta.data, anns)
+
+## Selected category
+category <- 'plate_number'
+```
+
+## Selecting pooled cells
+
+The next table show the content of the seurat object for pooled cells.
+
+```{r, subsetting, results='asis'}
+seurat <- subset(seurat, sample_name != 'single cell')
+table(seurat$sample_name, seurat$plate_number) %>%
+        as.data.frame.matrix() %>%
+        paged_table()
+```
+
+It can be seen that most of the pooled cells types consist of 100 populations. Then, here we
+focused in this sample type.
+
+
+
+
+## QC metrics
+
+The next violin plots show different QC metrics comparing the demultiplexed data analyzed here
+versus a previous demultiplexed.
+
+
+```{r, comparisson_old_new_metrics, fig.width=14}
+new.qc <- seurat@meta.data %>%
+  filter(sample_name == '100 cell popn') %>%
+  mutate(plate=gsub('_.*', '', well)) %>%
+    dplyr::select(plate, nCount_RNA, 
+                  nFeature_RNA, 
+                  unaligned:mapped_to_MT) %>%
+    melt() %>%
+    filter(variable!='mapped_to_ERCC') %>%
+    ggplot(aes(x=plate, y=log10(value), fill=plate)) +
+          geom_violin() +
+          facet_wrap(~variable) +
+          theme_bw() +
+          theme(legend.position = 'none') +
+          labs(x='', y='Log10(Counts)') +
+          ggtitle('New demultiplexing')
+
+old.demultiplexing <- readRDS('data/DCs-pathogen_interactions_seu.rds')
+old.qc <- old.demultiplexing@meta.data %>%
+  add_rownames(var = 'well') %>%
+  filter(sample_name == '100 cell popn') %>%
+    dplyr::select(plate_number, nCount_RNA, 
+                  nFeature_RNA, 
+                  unaligned:mapped_to_MT) %>%
+    melt() %>%
+    filter(variable!='mapped_to_ERCC') %>%
+    ggplot(aes(x=plate_number, y=log10(value), fill=plate_number)) +
+          geom_violin() +
+          facet_wrap(~variable) +
+          theme_bw() +
+          theme(legend.position = 'none') +
+          labs(x='', y='Log10(Counts)') +
+          ggtitle('Old demultiplexing')
+
+gridExtra::grid.arrange(
+  new.qc,
+  old.qc,
+  ncol=2
+)
+```
+
+Plate 196 seems to have a very low number of reads and therefore is filtered out. Additionally,
+cells with less than 1000 UMI are also removed.
+
+
+```{r, filtering}
+counts_th <- 1000
+
+## Number of RNA counts vs % mito
+seurat@meta.data %>% 
+  ggplot(aes(x=log(nCount_RNA), 
+             colour=get(category),
+             y=percent.mt)) +
+        geom_point(alpha=0.5) +
+        labs(x='Log(Counts of RNA)', y='Percentage mitochondrial',
+             colour='') +
+        geom_vline(xintercept = log(counts_th), 
+                   linetype = 'dashed',
+                   colour='red') +
+        theme_classic()
+
+seurat <- subset(seurat, 
+                 nCount_RNA > counts_th & 
+                         plate_number != 'P196')
+```
+
+## UMAP projection
+
+The following UMAP show the pooled cells according to categories.
+
+
+```{r, umap, fig.align='center'}
+seurat <- NormalizeData(seurat) %>% ScaleData()
+seurat <- FindVariableFeatures(seurat)
+seurat <- RunPCA(seurat, 
+                    npcs = 50, 
+                    features = VariableFeatures(seurat))
+seurat <- RunUMAP(seurat, 
+                     reduction = 'pca', 
+                     dims = 1:20)
+```
+
+
+```{r, umap_by_plate}
+## Annotating with yersinia infection and cell type
+seurat$treatment[is.na(seurat$treatment)] <- 'NA'
+plate <- seurat %>%
+        DimPlot(repel = TRUE)  +
+        ggtitle('Plate')
+plate + geom_vline(xintercept = -8, 
+                   linetype = 'dashed',
+                   colour='red')
+```
+We can observe an outlier cluster of cells. We further removed these cells 
+shown in the UMAP below the threshold UMAP_1 < -8.
+
+
+```{r categories_in_single_cells, fig.align='center', fig.width=10, fig.height=11}
+seurat <- subset(seurat, UMAP_1 > -8)
+
+## Annotating with yersinia infection and cell type
+seurat$treatment[is.na(seurat$treatment)] <- 'NA'
+plate <- seurat %>%
+        DimPlot(repel = TRUE)  +
+        ggtitle('Plate')
+
+disease.state <- seurat %>%
+        DimPlot(group.by = 'disease_state') + 
+        ggtitle('Disease State')
+
+bacteria <- seurat %>%
+        DimPlot(group.by = c('bacteria_attached'),
+                label = TRUE,
+                repel = TRUE) + 
+        NoLegend() +
+        ggtitle('Bacteria')
+
+treatment <- seurat %>%
+        DimPlot(group.by = c('treatment'),
+                label = TRUE,
+                repel = TRUE) + 
+        NoLegend() +
+        ggtitle('Treatment')
+
+progenitor <- seurat %>%
+        DimPlot(group.by = c('progenitor'),
+                label = TRUE,
+                repel = TRUE) + 
+        NoLegend() +
+        ggtitle('Progenitor')
+
+infection_time <- seurat %>%
+        DimPlot(group.by = c('infection_time'),
+                label = TRUE,
+                repel = TRUE) + 
+        NoLegend() +
+        ggtitle('Infection time')
+
+gridExtra::grid.arrange(
+  grobs = list(plate, disease.state, 
+               bacteria, treatment, 
+               progenitor, infection_time)
+)
+```
+
+
+## Definition of the bystander cells
+
+The next table show the definition of bystander cells according to the treatment and
+infection status per plate and progenitor type.
+
+
+```{r}
+seurat$'treated' <- ifelse(seurat$treatment == 'MOI 0', 
+                              'Mock-Infected', 'Infected')
+seurat$'Bystander' <- paste0(seurat$treated, '_', seurat$bacteria_attached) 
+seurat$Bystander <- gsub(' ', '_', seurat$Bystander)
+seurat$Bystander <- plyr::mapvalues(
+  seurat$Bystander,
+  from = c('Infected_-', 'Infected_+', 'Mock-Infected_-'),
+  to = c('Bystander', 'Infected', 'Mock-Infected')
+)
+
+seurat@meta.data %>%
+        filter(plate_number=='P193') %>%
+  dplyr::select(treatment, bacteria_attached, 
+                progenitor, Bystander) %>%
+  table() %>%
+  as.data.frame() %>%
+  filter(Freq > 0) %>%
+  arrange(treatment) %>%
+  paged_table()
+```
+
+
+## 1 HPI (Plate 193) analysis
+
+The next UMAP show only plate 193 across experimental conditions.
+
+
+```{r}
+## Subsetting to plate 193
+seurat.p193 <- subset(seurat, plate_number=='P193')
+
+## normalization
+seurat.p193 <- NormalizeData(seurat.p193) %>% 
+                  ScaleData() %>%
+                        RunPCA(npcs = 30) %>%
+                        RunUMAP(dims=1:20)
+
+
+disease.state.p193 <- seurat.p193 %>%
+        DimPlot(group.by = 'disease_state',
+                label = TRUE,
+                repel = TRUE) +  
+        NoLegend() +
+        ggtitle('Disease State')
+
+bacteria.p193 <- seurat.p193 %>%
+        DimPlot(group.by = c('bacteria_attached'),
+                label = TRUE,
+                repel = TRUE) + 
+        ggtitle('Bacteria')
+
+treatment.p193 <- seurat.p193 %>%
+        DimPlot(group.by = c('treatment')) +
+        ggtitle('Treatment')
+
+progenitor.p193 <- seurat.p193 %>%
+        DimPlot(group.by = c('progenitor')) 
+        ggtitle('Progenitor')
+
+gridExtra::grid.arrange(
+  grobs = list(disease.state.p193, 
+               bacteria.p193, 
+               treatment.p193, 
+               progenitor.p193)
+)
+
+```
+
+
+
+## Gene expression correlation
+
+The next heatmap shows spearman correlation between all CDP pooled cells at time 1 hpi.
+The diagonal values (=1) are set to zero. It can be seen that bystander cells cluster
+together with mock-infected cells similar to what we observed in the single cells. 
+
+
+### CDP
+
+```{r, gene_expression_correlation_cdp_heatmap}
+######################################################################################
+## CDPs
+p193.cdp <- subset(seurat.p193, progenitor=='CDP')
+anns <- p193.cdp@meta.data %>% 
+        select(Bystander)
+
+## Correlation
+p193.cdp.mtx <- p193.cdp@assays$RNA@scale.data[VariableFeatures(seurat.p193), ] %>% 
+        cor(method = 'spearman')
+diag(p193.cdp.mtx) <- 0
+
+## Heatmap
+p193.cdp.heatmap <- pheatmap(p193.cdp.mtx, 
+         annotation_col = anns,
+         annotation_colors = list(Bystander=c(`Infected`='red',
+                                              `Bystander`='orange',
+                                              `Mock-Infected`='green')), 
+         show_rownames = FALSE,
+         show_colnames = FALSE, 
+         color = viridis(20)
+)
+p193.cdp.heatmap
+```
+
+
+### MDPs
+
+Unfortunately, for MDPs there are not enough infected cells and the heatmap is not informative
+as shown next.
+
+
+
+```{r, , gene_expression_correlation_mdp_heatmap}
+######################################################################################
+## MDPs
+p193.mdp <- subset(seurat.p193, progenitor=='MDP')
+anns <- p193.mdp@meta.data %>% 
+        select(Bystander)
+
+## Correlation
+p193.mdp.mtx <- p193.mdp@assays$RNA@scale.data[VariableFeatures(seurat.p193), ] %>% 
+        cor(method = 'spearman')
+diag(p193.mdp.mtx) <- 0
+
+## Heatmap
+p193.mdp.heatmap <- pheatmap(p193.mdp.mtx, 
+         annotation_col = anns,
+         annotation_colors = list(Bystander=c(`Infected`='red',
+                                              `Bystander`='orange',
+                                              `Mock-Infected`='green')), 
+         show_rownames = FALSE,
+         show_colnames = FALSE, 
+         color = viridis(20)
+)
+p193.mdp.heatmap
+```
+
+
+## Spi1 regulon activity in CDP (1 hpi)
+
+To validate elevated Spi1 activity in infected CDPs (ii) using the pool cells samples
+we extracted the genes in the regulons inferred using pySCENIC. We selected the regulon
+associated with the motif with higher score, and then ranked cells using the genes in 
+that regulon with the `AddModuleScore` function from Seurat.
+
+
+```{r, scoring_regulons, fig.width=12, fig.height=6}
+## function to extract TFs in column 7 from SCENIC results
+extract_targets <- function(x){
+        targets <- regmatches(x, gregexpr("'[^']*'", x))[[1]] 
+        gsub("'", '', targets)
+}
+
+## Reading spi1 regulons
+regulons <- read.csv('analysis/scenic/reg.csv', skip = 2)
+
+## Using the highest spi1 motif
+spi1.regulon.df.top <- filter(regulons, TF == 'Spi1') %>%
+                    arrange(desc(X)) %>% 
+                       head(1)
+spi1.regulon.top <- extract_targets(spi1.regulon.df.top$X.7)
+
+p193 <- subset(seurat, plate_number=='P193')
+p193 <- AddModuleScore(p193, 
+                       features = list(spi1.regulon.top), 
+                       name = 'spi1_regulon', 
+                       nbin = 3, 
+                       ctrl = 10, 
+                       seed = 333)
+p193@meta.data$Bystander <- factor(p193@meta.data$Bystander,
+                                   levels = c('Mock-Infected',
+                                              'Bystander',
+                                              'Infected'))
+spi1.plot <- p193@meta.data %>%
+        ggplot(aes(x=Bystander, 
+                   y=log(spi1_regulon1),
+                   fill=Bystander)) +
+                geom_boxplot() +
+                geom_jitter() +
+                facet_wrap(~progenitor) +
+        theme_bw() +
+        labs(x='', y='Log(Spi1 TFA Score)') +
+        theme(legend.position = 'none') +
+        ggtitle('Spi1 TFA')
+
+## Using the highest spi1 motif
+jun.regulon.df.top <- filter(regulons, TF == 'Jun') %>%
+                    arrange(desc(X)) %>% 
+                       head(1)
+jun.regulon.top <- extract_targets(jun.regulon.df.top$X.7)
+
+#p193 <- subset(seurat, plate_number=='P193')
+p193 <- AddModuleScore(p193, 
+                       features = list(jun.regulon.top), 
+                       name = 'jun_regulon', 
+                       nbin = 3, 
+                       ctrl = 10, 
+                       seed = 333)
+
+p193@meta.data$Bystander <- factor(p193@meta.data$Bystander,
+                                   levels = c('Mock-Infected',
+                                              'Bystander',
+                                              'Infected'))
+jun.plot <- p193@meta.data %>%
+        ggplot(aes(x=Bystander, 
+                   y=log(jun_regulon1),
+                   fill=Bystander)) +
+                geom_boxplot() +
+                geom_jitter() +
+                facet_wrap(~progenitor) +
+        theme_bw() +
+        labs(x='', y='Log(Jun TFA Score)') +
+        theme(legend.position = 'none') +
+        ggtitle('Jun TFA')
+
+gridExtra::grid.arrange(
+  spi1.plot,
+  jun.plot, 
+  ncol=2
+)
+```
+
+
+
+```{r, fig.height=12, eval=FALSE}
+p193.cdp <- subset(seurat.p193, progenitor=='CDP')
+anns <- p193.cdp@meta.data %>% 
+        select(Bystander)
+p193.cdp.ge <- p193.cdp@assays$RNA@scale.data %>%
+                  as.data.frame()
+targets <- rownames(p193.cdp.ge)[rownames(p193.cdp.ge) %in% spi1.regulon.top]
+p193.cdp.ge <- p193.cdp.ge[targets, ] 
+
+p193.cdp.ge <- t(p193.cdp.ge)
+## checking equal names and in the same order
+any(rownames(p193.cdp.ge) != rownames(anns))
+p193.cdp.ge <- cbind(p193.cdp.ge, anns)
+
+p193.mean <- p193.cdp.ge %>%
+        group_by(Bystander) %>% 
+        summarise(across(everything(), list(mean = mean)))
+col_names <- p193.mean$Bystander
+p193.mean <- select(p193.mean, contains('mean')) %>% t()
+colnames(p193.mean) <- col_names
+rownames(p193.mean) <- gsub('_mean', '', rownames(p193.mean))
+
+p193.mean %>%
+        as.matrix() %>%
+        pheatmap()
+```
+
+## Differential Expression Analysis
+
+DEA across infected, bystander and mock-infected cells in CDPs at 1 hpi.
+
+* CDP
+
+```{r, plate_193_composition}
+seurat@meta.data %>%
+  filter(plate_number=='P193') %>%
+  dplyr::select(Bystander, progenitor) %>%
+  table() %>%
+  as.data.frame() %>%
+  filter(Freq>0) %>%
+  paged_table()
+```
+
+```{r, degs_1hpi_cdp}
+## Loading selected genes
+selected_genes <- readLines('data/selected_genes.txt')
+
+Idents(seurat) <- as.character(seurat$Bystander)
+infvsBys.cdp.deg <- seurat %>%
+  subset(progenitor=='CDP' & plate_number=='P193') %>%
+  subset(Bystander != 'Mock-Infected') %>%
+  FindMarkers(ident.1='Infected',
+              logfc.threshold = 0,
+              min.pct = 0,
+              min.cells.feature = 0,
+              min.cells.group = 0) %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
+  filter(!grepl('^Gm', gene)) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.4  & p_val < 0.05 ),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | selected_gene ==TRUE, gene, ''))
+infvsBys.cdp.plot <- infvsBys.cdp.deg %>%
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_point(data=subset(infvsBys.cdp.deg,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black') +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
+        theme_classic() +
+        xlim(-2, 2) +
+        ggtitle('CDP - 1HPI - Infected vs Bystander')
+
+```
+
+```{r table_cdp_inf_vs_bys_1hpi}
+infvsBys.cdp.deg %>%
+  filter(p_val < 0.05) %>%
+  paged_table()
+```
