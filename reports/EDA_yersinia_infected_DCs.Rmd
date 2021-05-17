@@ -3,9 +3,9 @@ title: "Explorative Data Analysis of DCs infected with Yersinia scRNA-Seq data"
 author: "Health Data Unit"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
-  pdf_document: default
   html_document:
     code_folding: hide
+  pdf_document: default
 ---
 
 
@@ -34,6 +34,7 @@ library(viridis)
 library(destiny)
 library(enrichR)
 library(dplyr)
+library(reshape2)
 
 set.seed(333)
 
@@ -53,7 +54,7 @@ knitr::opts_knit$set(
 
 # Demultiplexed counts
 
-The folowing table shows annotations and quality metrics for all the wells in the
+The following table shows annotations and quality metrics for all the wells in the
 dataset. 
 
 ```{r, settings}
@@ -95,6 +96,51 @@ single cells which correspond to plate 193, 194 and 196 as can be seen in the ne
 table(seurat$sample_name, seurat$plate_number) %>%
         as.data.frame.matrix() %>%
         paged_table()
+```
+
+## QC metrics
+
+
+
+```{r, comparisson_old_new_metrics, fig.width=14}
+new.qc <- seurat@meta.data %>%
+  filter(sample_name == 'single cell') %>%
+  mutate(plate=gsub('_.*', '', well)) %>%
+    dplyr::select(plate, nCount_RNA, 
+                  nFeature_RNA, 
+                  unaligned:mapped_to_MT) %>%
+    melt() %>%
+    filter(variable!='mapped_to_ERCC') %>%
+    ggplot(aes(x=plate, y=log10(value), fill=plate)) +
+          geom_violin() +
+          facet_wrap(~variable) +
+          theme_bw() +
+          theme(legend.position = 'none') +
+          labs(x='', y='Log10(Counts)') +
+          ggtitle('New demultiplexing')
+
+old.demultiplexing <- readRDS('data/DCs-pathogen_interactions_seu.rds')
+old.qc <- old.demultiplexing@meta.data %>%
+  add_rownames(var = 'well') %>%
+  filter(sample_name == 'single cell') %>%
+    dplyr::select(plate_number, nCount_RNA, 
+                  nFeature_RNA, 
+                  unaligned:mapped_to_MT) %>%
+    melt() %>%
+    filter(variable!='mapped_to_ERCC') %>%
+    ggplot(aes(x=plate_number, y=log10(value), fill=plate_number)) +
+          geom_violin() +
+          facet_wrap(~variable) +
+          theme_bw() +
+          theme(legend.position = 'none') +
+          labs(x='', y='Log10(Counts)') +
+          ggtitle('Old demultiplexing')
+
+gridExtra::grid.arrange(
+  new.qc,
+  old.qc,
+  ncol=2
+)
 ```
 
 ## Filtering cells
@@ -234,11 +280,27 @@ Using these definitions we performed a differential expression analysis taking c
 in plates separately.
 
 The next table show the frequency of single cells according to their
-infection status and the type of progenitor.
+infection status and the type of progenitor in plate 193.
 
-```{r}
+### Plate 193
+
+```{r, plate_193_composition}
 sc.seurat@meta.data %>%
   filter(plate_number=='P193') %>%
+  dplyr::select(Bystander, progenitor) %>%
+  table() %>%
+  as.data.frame() %>%
+  filter(Freq>0) %>%
+  paged_table()
+```
+
+
+### Plate 196
+
+
+```{r, plate_196_composition}
+sc.seurat@meta.data %>%
+  filter(plate_number=='P196') %>%
   dplyr::select(Bystander, progenitor) %>%
   table() %>%
   as.data.frame() %>%
@@ -1009,7 +1071,7 @@ names(gsea.plot) <- names(gsea.list)
 ```
 
 
-```{r, GSEA_plot, results = "asis", fig.align='center'}
+```{r, GSEA_plot, results = "asis", fig.align='center', eval=FALSE}
 names(gsea.plot) <- c('Infected vs Bystander - CDP - 1HPI',
                       'Infected vs Mock - CDP - 1HPI',
                       'Bystander vs Mock - CDP - 1HPI',
@@ -1028,6 +1090,30 @@ for (i in 1:length(gsea.plot)) {
     cat(' \n\n')
 }
 ```
+
+## GSEA (1 hpi)
+
+
+The next barplot show the enrichment analysis of the DEGs obtained above at time
+1 hpi.
+
+
+```{r, fig.height=10, fig.width=17}
+gridExtra::grid.arrange(grobs=gsea.plot[1:6], ncol=3)
+```
+
+## GSEA (24 hpi)
+
+
+The next barplot show the enrichment analysis of the DEGs obtained above at
+24 hpi. 
+
+```{r, fig.height=10, fig.width=17}
+gridExtra::grid.arrange(grobs=gsea.plot[7:12], ncol=3)
+```
+
+We can conclude from the GSEA that immune responses change between infectious 
+status.
 
 
 # Ordering cells
@@ -1189,9 +1275,63 @@ gridExtra::grid.arrange(
 )
 ```
 
+
 From this analysis, two clear branches can be observed for Infected and Bystander cells
 which suggest different underlying signatures in each subsets. Bystander cells are more
 similar to Mock-Infected control cells as expected.
+
+
+## Checking infection status
+
+
+The next diffusion maps show the infection status by the bacteria attached category as
+a double check of the previous analysis.
+
+
+```{r, fig.width=10, fig.height=8}
+cdp.1hpi <- res.cdp.1hpi %>% ggplot(aes(x=DC1, y=-DC2,
+                   colour=bacteria_attached)) +
+        geom_point(size=2.5, alpha=0.7) + 
+        theme_classic() +
+        labs(colour='') +
+        ggtitle('CDP - 1 hpi')
+
+
+mdp.1hpi <- res.mdp.1hpi %>% ggplot(aes(x=DC1, y=DC2,
+                   colour=bacteria_attached)) +
+        geom_point(size=2.5, alpha=0.7) +
+        theme_classic() +
+        labs(colour='') +
+        ggtitle('MDP - 1 hpi')
+
+
+cdp.24hpi <- res.cdp.24hpi %>% ggplot(aes(x=DC1, y=DC2,
+                   colour=bacteria_attached)) +
+        geom_point(size=2.5, alpha=0.7) + 
+        theme_classic() +
+        labs(colour='') +
+        ggtitle('CDP - 24 hpi')
+
+
+
+mdp.24hpi <- res.mdp.24hpi %>% ggplot(aes(x=DC1, y=-DC2,
+                   colour=bacteria_attached)) +
+        geom_point(size=2.5, alpha=0.7) +
+        theme_classic() +
+        labs(colour='') +
+        ggtitle('MDP - 24 hpi')
+
+
+gridExtra::grid.arrange(
+  cdp.1hpi,
+  mdp.1hpi,
+  cdp.24hpi,
+  mdp.24hpi,
+  ncol=2
+)
+```
+
+
 
 ## Transcription factor activity {.tabset}
 
@@ -1388,6 +1528,232 @@ gridExtra::grid.arrange(
 
 It can be seen that Jun is more active in the infected cells compared to bystander
 and non-infected mock cells.
+
+
+# Comparing CDP vs MDP responses 
+
+We compared responses in CDP vs MDP derived DCs. DEA was performed for infected,
+bystander and mock-infected cells at 1 and 24 hpi separately.
+
+```{r cdp_vs_mdp, fig.width=12, fig.height=9}
+Idents(sc.seurat) <- as.character(sc.seurat$progenitor)
+
+## Mock 1hpi
+prog.mock.193 <- sc.seurat %>%
+  subset(plate_number=='P193') %>%
+  subset(Bystander != 'Mock-Infected') %>%
+  FindMarkers(ident.1='CDP') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
+  filter(!grepl('^Gm', gene)) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.9  & p_val < 0.05),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | 
+                        selected_gene ==TRUE, gene, ''))
+prog.mock.193.plot <- prog.mock.193 %>%  
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_point(data=subset(prog.mock.193,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3.5, 
+                        max.overlaps = 200) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
+        theme_classic() +
+        xlim(-2, 2) +
+        ggtitle('CDP vs MDP - 1HPI - Mock-Infected')
+
+
+## Bystander 1hpi
+prog.byst.193 <- sc.seurat %>%
+  subset(plate_number=='P193') %>%
+  subset(Bystander != 'Bystander') %>%
+  FindMarkers(ident.1='CDP') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
+  filter(!grepl('^Gm', gene)) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.9  & p_val < 0.05),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | 
+                        selected_gene ==TRUE, gene, ''))
+prog.byst.193.plot <- prog.byst.193 %>%  
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_point(data=subset(prog.byst.193,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3.5, 
+                        max.overlaps = 200) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
+        theme_classic() +
+        xlim(-2, 2) +
+        ggtitle('CDP vs MDP - 1HPI - Bystander')
+
+
+## Infected 1hpi
+prog.inf.193 <- sc.seurat %>%
+  subset(plate_number=='P193') %>%
+  subset(Bystander != 'Infected') %>%
+  FindMarkers(ident.1='CDP') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
+  filter(!grepl('^Gm', gene)) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.9  & p_val < 0.05),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | 
+                        selected_gene ==TRUE, gene, ''))
+prog.inf.193.plot <- prog.inf.193 %>%  
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_point(data=subset(prog.inf.193,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3.5, 
+                        max.overlaps = 200) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
+        theme_classic() +
+        xlim(-2, 2) +
+        ggtitle('CDP vs MDP - 1HPI - Infected')
+
+
+################################################################################
+
+## Mock 24hpi
+prog.mock.196 <- sc.seurat %>%
+  subset(plate_number=='P196') %>%
+  subset(Bystander != 'Mock-Infected') %>%
+  FindMarkers(ident.1='CDP') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
+  filter(!grepl('^Gm', gene)) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1.5  & p_val < 0.0005),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | 
+                        selected_gene ==TRUE, gene, ''))
+prog.mock.196.plot <- prog.mock.196 %>%  
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_point(data=subset(prog.mock.196,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3.5, 
+                        max.overlaps = 200) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
+        theme_classic() +
+        xlim(-2, 2) +
+        ggtitle('CDP vs MDP - 24HPI - Mock-Infected')
+
+
+## Bystander 1hpi
+prog.byst.196 <- sc.seurat %>%
+  subset(plate_number=='P196') %>%
+  subset(Bystander != 'Bystander') %>%
+  FindMarkers(ident.1='CDP') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
+  filter(!grepl('^Gm', gene)) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1.5  & p_val < 0.005),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | 
+                        selected_gene ==TRUE, gene, ''))
+prog.byst.196.plot <- prog.byst.196 %>%  
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_point(data=subset(prog.byst.196,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3.5, 
+                        max.overlaps = 200) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
+        theme_classic() +
+        xlim(-2, 2) +
+        ggtitle('CDP vs MDP - 24HPI - Bystander')
+
+
+## Infected 24hpi
+prog.inf.196 <- sc.seurat %>%
+  subset(plate_number=='P196') %>%
+  subset(Bystander != 'Infected') %>%
+  FindMarkers(ident.1='CDP') %>%
+  arrange(desc(abs(avg_log2FC))) %>%
+  add_rownames('gene') %>%
+  mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
+  filter(!grepl('^Gm', gene)) %>%
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1.75  & p_val < 0.005),
+                           TRUE, FALSE) ) %>%
+  mutate(label=ifelse(highlight==TRUE | 
+                        selected_gene ==TRUE, gene, ''))
+prog.inf.196.plot <- prog.inf.196 %>%  
+  ggplot(aes(x=avg_log2FC, y=-log10(p_val),
+             colour=highlight,
+             label=label)) +
+        geom_point(show.legend = FALSE) +
+        geom_point(data=subset(prog.inf.196,
+                               selected_gene==TRUE), 
+                   aes(colour='green'),
+                   show.legend=FALSE) +
+        geom_text_repel(show.legend=FALSE, 
+                        colour='black', 
+                        force = 3.5, 
+                        max.overlaps = 200) +
+        theme(legend.position = 'none') +
+        scale_color_manual(values = c('salmon', 'green', 
+                                      'black', 'red')) +
+        theme_classic() +
+        xlim(-2, 2) +
+        ggtitle('CDP vs MDP - 24HPI - Infected')
+
+gridExtra::grid.arrange(
+  prog.inf.193.plot,
+  prog.byst.193.plot,
+  prog.mock.193.plot,
+  prog.inf.196.plot,
+  prog.byst.196.plot,
+  prog.mock.196.plot,
+  ncol=3
+)
+
+```
 
 
 # Additional tables
