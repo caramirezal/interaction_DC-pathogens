@@ -35,6 +35,8 @@ library(destiny)
 library(enrichR)
 library(dplyr)
 library(reshape2)
+library(readxl)
+library(writexl)
 
 set.seed(333)
 
@@ -977,7 +979,7 @@ BysvsMock.cdp.24hpi.dotplot <- DotPlot(
   scale_color_viridis() +
   labs(x='', y='') +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle('CDP - 24HPI - Infected vs Mock')
+  ggtitle('CDP - 24HPI - Bystander vs Mock')
 
 ###################################################################################
 
@@ -1541,7 +1543,7 @@ Idents(sc.seurat) <- as.character(sc.seurat$progenitor)
 ## Mock 1hpi
 prog.mock.193 <- sc.seurat %>%
   subset(plate_number=='P193') %>%
-  subset(Bystander != 'Mock-Infected') %>%
+  subset(Bystander == 'Mock-Infected') %>%
   FindMarkers(ident.1='CDP') %>%
   arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
@@ -1575,13 +1577,13 @@ prog.mock.193.plot <- prog.mock.193 %>%
 ## Bystander 1hpi
 prog.byst.193 <- sc.seurat %>%
   subset(plate_number=='P193') %>%
-  subset(Bystander != 'Bystander') %>%
+  subset(Bystander == 'Bystander') %>%
   FindMarkers(ident.1='CDP') %>%
   arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
   mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
-  mutate(highlight=ifelse( ( abs(avg_log2FC) > 0.9  & p_val < 0.05),
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1.1  & p_val < 0.05),
                            TRUE, FALSE) ) %>%
   mutate(label=ifelse(highlight==TRUE | 
                         selected_gene ==TRUE, gene, ''))
@@ -1602,14 +1604,14 @@ prog.byst.193.plot <- prog.byst.193 %>%
         scale_color_manual(values = c('salmon', 'green', 
                                       'black', 'red')) +
         theme_classic() +
-        xlim(-2, 2) +
+        #xlim(-2, 2) +
         ggtitle('CDP vs MDP - 1HPI - Bystander')
 
 
 ## Infected 1hpi
 prog.inf.193 <- sc.seurat %>%
   subset(plate_number=='P193') %>%
-  subset(Bystander != 'Infected') %>%
+  subset(Bystander == 'Infected') %>%
   FindMarkers(ident.1='CDP') %>%
   arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
@@ -1645,7 +1647,7 @@ prog.inf.193.plot <- prog.inf.193 %>%
 ## Mock 24hpi
 prog.mock.196 <- sc.seurat %>%
   subset(plate_number=='P196') %>%
-  subset(Bystander != 'Mock-Infected') %>%
+  subset(Bystander == 'Mock-Infected') %>%
   FindMarkers(ident.1='CDP') %>%
   arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
@@ -1676,16 +1678,16 @@ prog.mock.196.plot <- prog.mock.196 %>%
         ggtitle('CDP vs MDP - 24HPI - Mock-Infected')
 
 
-## Bystander 1hpi
+## Bystander 24hpi
 prog.byst.196 <- sc.seurat %>%
   subset(plate_number=='P196') %>%
-  subset(Bystander != 'Bystander') %>%
+  subset(Bystander == 'Bystander') %>%
   FindMarkers(ident.1='CDP') %>%
   arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
   mutate(selected_gene=(toupper(gene) %in% toupper(selected_genes))) %>%
   filter(!grepl('^Gm', gene)) %>%
-  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1.5  & p_val < 0.005),
+  mutate(highlight=ifelse( ( abs(avg_log2FC) > 1.8  & p_val < 0.005),
                            TRUE, FALSE) ) %>%
   mutate(label=ifelse(highlight==TRUE | 
                         selected_gene ==TRUE, gene, ''))
@@ -1713,7 +1715,7 @@ prog.byst.196.plot <- prog.byst.196 %>%
 ## Infected 24hpi
 prog.inf.196 <- sc.seurat %>%
   subset(plate_number=='P196') %>%
-  subset(Bystander != 'Infected') %>%
+  subset(Bystander == 'Infected') %>%
   FindMarkers(ident.1='CDP') %>%
   arrange(desc(abs(avg_log2FC))) %>%
   add_rownames('gene') %>%
@@ -1750,6 +1752,109 @@ gridExtra::grid.arrange(
   prog.inf.196.plot,
   prog.byst.196.plot,
   prog.mock.196.plot,
+  ncol=3
+)
+
+```
+
+```{r, cdpvsmdp_dotplots, fig.width=14, fig.height=12}
+## Getting top markers
+cdpVsmdp <- list(prog.inf.193=prog.inf.193,
+                 prog.byst.193=prog.byst.193,
+                 prog.mock.193=prog.mock.193,
+                 prog.inf.196=prog.inf.196,
+                 prog.byst.196=prog.byst.196,
+                 prog.mock.196=prog.mock.196)
+cdpVsmdp <- lapply(cdpVsmdp, 
+                   function(x) 
+                     filter(x, p_val < 0.005) %>%
+                     arrange(desc(avg_log2FC)))
+
+## CDP vs MDPs - 1HPI - Infected 
+inf.1hpi.dotplot <- subset(sc.seurat, plate_number=='P193') %>%
+  subset(Bystander == 'Infected') %>%
+  DotPlot( 
+  features = unique(c(head(cdpVsmdp$prog.inf.193$gene, 10),
+               tail(cdpVsmdp$prog.inf.193$gene, 10)))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP vs MDP - 1HPI - Infected')
+
+
+## CDP vs MDPs - 1HPI - Bystander
+byst.1hpi.dotplot <- subset(sc.seurat, 
+                            plate_number=='P193') %>%
+  subset(Bystander == 'Bystander') %>%
+  DotPlot( 
+  features = unique(c(head(cdpVsmdp$prog.byst.193$gene, 10),
+               tail(cdpVsmdp$prog.byst.193$gene, 10)))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP vs MDP - 1HPI - Bystander')
+
+## CDP vs MDPs - 1HPI - Mock
+mock.1hpi.dotplot <- subset(sc.seurat, 
+                            plate_number=='P193') %>%
+  subset(Bystander == 'Mock-Infected') %>%
+  DotPlot( 
+  features = unique(c(head(cdpVsmdp$prog.mock.193$gene, 10),
+               tail(cdpVsmdp$prog.mock.193$gene, 10)))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP vs MDP - 1HPI - Mock')
+
+
+##################################################################
+
+## CDP vs MDPs - 24HPI - Infected 
+inf.24hpi.dotplot <- subset(sc.seurat, plate_number=='P196') %>%
+  subset(Bystander == 'Infected') %>%
+  DotPlot( 
+  features = unique(c(head(cdpVsmdp$prog.inf.196$gene, 10),
+               tail(cdpVsmdp$prog.inf.196$gene, 10)))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP vs MDP - 24HPI - Infected')
+
+## CDP vs MDPs - 24HPI - Bystander
+byst.24hpi.dotplot <- subset(sc.seurat, plate_number=='P196') %>%
+  subset(Bystander == 'Bystander') %>%
+  DotPlot( 
+  features = unique(c(head(cdpVsmdp$prog.byst.196$gene, 10),
+               tail(cdpVsmdp$prog.byst.196$gene, 10)))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP vs MDP - 24HPI - Bystander')
+
+## CDP vs MDPs - 24HPI - Mock
+mock.24hpi.dotplot <- subset(sc.seurat, plate_number=='P196') %>%
+  subset(Bystander == 'Mock-Infected') %>%
+  DotPlot( 
+  features = unique(c(head(cdpVsmdp$prog.mock.196$gene, 10),
+               tail(cdpVsmdp$prog.mock.196$gene, 10)))
+) + coord_flip() +
+  scale_color_viridis() +
+  labs(x='', y='') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('CDP vs MDP - 24HPI - Mock')
+
+gridExtra::grid.arrange(
+  inf.1hpi.dotplot,
+  byst.1hpi.dotplot,
+  mock.1hpi.dotplot,
+  inf.24hpi.dotplot,
+  byst.24hpi.dotplot,
+  mock.24hpi.dotplot,
   ncol=3
 )
 
@@ -1877,4 +1982,38 @@ bysvsMock.mdp.deg.24 %>%
 infvsMock.mdp.deg.24 %>%
   filter(p_val < 0.05) %>%
   paged_table()
+```
+
+
+```{r, saving_results}
+## degs comparing infection status at 1 hpi
+write_xlsx(x = list('infvsBys.cdp.deg.1hpi'=infvsBys.cdp.deg,
+             'infvsMock.cdp.deg.1hpi'=infvsMock.cdp.deg, 
+             'bysvsMock.cdp.deg.1hpi'=bysvsMock.cdp.deg,
+             'infvsBys.mdp.deg.1hpi'=infvsBys.mdp.deg,
+             'infvsMock.mdp.deg.1hpi'=infvsMock.mdp.deg,
+             'bysvsMock.mdp.deg.1hpi'=bysvsMock.mdp.deg), 
+           path = 'analysis/degs.infection.status.1hpi.xlsx'
+)
+
+## degs comparing infection status at 24 hpi
+write_xlsx(x = list('infvsBys.cdp.deg.24hpi'=infvsBys.cdp.deg.24,
+             'infvsMock.cdp.deg.24hpi'=infvsMock.cdp.deg.24, 
+             'bysvsMock.cdp.deg.24hpi'=bysvsMock.cdp.deg.24,
+             'infvsBys.mdp.deg.24hpi'=infvsBys.mdp.deg.24,
+             'infvsMock.mdp.deg.24hpi'=infvsMock.mdp.deg.24,
+             'bysvsMock.mdp.deg.24hpi'=bysvsMock.mdp.deg.24), 
+           path = 'analysis/degs.infection.status.24hpi.xlsx'
+)
+
+## degs comparing infection status at 24 hpi
+write_xlsx(x = list('cdpVsmdp.mock.1hpi'=prog.mock.193,
+             'cdpVsmdp.byst.1hpi'=prog.byst.193, 
+             'cdpVsmdp.inf.1hpi'=prog.inf.193,
+             'cdpVsmdp.mock.24hpi'=prog.mock.196,
+             'cdpVsmdp.byst.24hpi'=prog.byst.196,
+             'cdpVsmdp.inf.24hpi'=prog.inf.196), 
+           path = 'analysis/degs.CDPVsMDP.xlsx'
+)
+
 ```
