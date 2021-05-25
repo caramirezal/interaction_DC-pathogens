@@ -5,7 +5,6 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
     code_folding: hide
-  pdf_document: default
 ---
 
 
@@ -98,8 +97,6 @@ It can be seen that most of the pooled cells types consist of 100 populations. T
 focused in this sample type.
 
 
-
-
 ## QC metrics
 
 The next violin plots show different QC metrics comparing the demultiplexed data analyzed here
@@ -167,9 +164,9 @@ seurat@meta.data %>%
                    colour='red') +
         theme_classic()
 
-seurat <- subset(seurat, 
-                 nCount_RNA > counts_th & 
-                         plate_number != 'P196')
+#seurat <- subset(seurat, 
+#                 nCount_RNA > counts_th & 
+#                         plate_number != 'P196')
 ```
 
 ## UMAP projection
@@ -199,12 +196,14 @@ plate + geom_vline(xintercept = -8,
                    linetype = 'dashed',
                    colour='red')
 ```
+
+
 We can observe an outlier cluster of cells. We further removed these cells 
 shown in the UMAP below the threshold UMAP_1 < -8.
 
 
-```{r categories_in_single_cells, fig.align='center', fig.width=10, fig.height=11}
-seurat <- subset(seurat, UMAP_1 > -8)
+```{r categories_in_single_cells, fig.align='center', fig.width=10, fig.height=16}
+
 
 ## Annotating with yersinia infection and cell type
 seurat$treatment[is.na(seurat$treatment)] <- 'NA'
@@ -244,10 +243,16 @@ infection_time <- seurat %>%
         NoLegend() +
         ggtitle('Infection time')
 
+sample_name <- seurat %>%
+        DimPlot(group.by = c('sample_name')) + 
+        ggtitle('Sample type')
+
 gridExtra::grid.arrange(
   grobs = list(plate, disease.state, 
                bacteria, treatment, 
-               progenitor, infection_time)
+               progenitor, infection_time,
+               sample_name),
+  ncol = 2
 )
 ```
 
@@ -259,6 +264,7 @@ infection status per plate and progenitor type.
 
 
 ```{r}
+#seurat <- subset(seurat, UMAP_1 > -8)
 seurat$'treated' <- ifelse(seurat$treatment == 'MOI 0', 
                               'Mock-Infected', 'Infected')
 seurat$'Bystander' <- paste0(seurat$treated, '_', seurat$bacteria_attached) 
@@ -286,7 +292,7 @@ seurat@meta.data %>%
 The next UMAP show only plate 193 across experimental conditions.
 
 
-```{r}
+```{r, results='hide'}
 ## Subsetting to plate 193
 seurat.p193 <- subset(seurat, plate_number=='P193')
 
@@ -322,7 +328,8 @@ gridExtra::grid.arrange(
   grobs = list(disease.state.p193, 
                bacteria.p193, 
                treatment.p193, 
-               progenitor.p193)
+               progenitor.p193),
+  ncol = 2
 )
 
 ```
@@ -438,7 +445,8 @@ spi1.plot <- p193@meta.data %>%
                    fill=Bystander)) +
                 geom_boxplot() +
                 geom_jitter() +
-                facet_wrap(~progenitor) +
+                facet_wrap(~progenitor, 
+                           scales = 'free') +
         theme_bw() +
         labs(x='', y='Log(Spi1 TFA Score)') +
         theme(legend.position = 'none') +
@@ -468,7 +476,8 @@ jun.plot <- p193@meta.data %>%
                    fill=Bystander)) +
                 geom_boxplot() +
                 geom_jitter() +
-                facet_wrap(~progenitor) +
+                facet_wrap(~progenitor, 
+                           scales = 'free') +
         theme_bw() +
         labs(x='', y='Log(Jun TFA Score)') +
         theme(legend.position = 'none') +
@@ -571,3 +580,6 @@ infvsBys.cdp.deg %>%
   filter(p_val < 0.05) %>%
   paged_table()
 ```
+
+
+
