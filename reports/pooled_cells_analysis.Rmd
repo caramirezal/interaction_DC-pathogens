@@ -192,9 +192,10 @@ seurat$treatment[is.na(seurat$treatment)] <- 'NA'
 plate <- seurat %>%
         DimPlot(repel = TRUE)  +
         ggtitle('Plate')
-plate + geom_vline(xintercept = -8, 
-                   linetype = 'dashed',
-                   colour='red')
+#plate + geom_vline(xintercept = -8, 
+#                   linetype = 'dashed',
+#                   colour='red')
+plate
 ```
 
 
@@ -237,10 +238,7 @@ progenitor <- seurat %>%
         ggtitle('Progenitor')
 
 infection_time <- seurat %>%
-        DimPlot(group.by = c('infection_time'),
-                label = TRUE,
-                repel = TRUE) + 
-        NoLegend() +
+        DimPlot(group.by = c('infection_time')) + 
         ggtitle('Infection time')
 
 sample_name <- seurat %>%
@@ -379,7 +377,7 @@ as shown next.
 
 
 ```{r, , gene_expression_correlation_mdp_heatmap}
-######################################################################################
+#################################################################################
 ## MDPs
 p193.mdp <- subset(seurat.p193, progenitor=='MDP')
 anns <- p193.mdp@meta.data %>% 
@@ -439,7 +437,7 @@ p193@meta.data$Bystander <- factor(p193@meta.data$Bystander,
                                    levels = c('Mock-Infected',
                                               'Bystander',
                                               'Infected'))
-spi1.plot <- p193@meta.data %>%
+spi1.plot.1h <- p193@meta.data %>%
         ggplot(aes(x=Bystander, 
                    y=log(spi1_regulon1),
                    fill=Bystander)) +
@@ -450,7 +448,10 @@ spi1.plot <- p193@meta.data %>%
         theme_bw() +
         labs(x='', y='Log(Spi1 TFA Score)') +
         theme(legend.position = 'none') +
-        ggtitle('Spi1 TFA')
+        ggtitle('Spi1 TFA') +
+        scale_fill_manual(values = c('green',
+                                      'orange',
+                                      'red'))
 
 ## Using the highest spi1 motif
 jun.regulon.df.top <- filter(regulons, TF == 'Jun') %>%
@@ -470,7 +471,8 @@ p193@meta.data$Bystander <- factor(p193@meta.data$Bystander,
                                    levels = c('Mock-Infected',
                                               'Bystander',
                                               'Infected'))
-jun.plot <- p193@meta.data %>%
+
+jun.plot.1h <- p193@meta.data %>%
         ggplot(aes(x=Bystander, 
                    y=log(jun_regulon1),
                    fill=Bystander)) +
@@ -481,43 +483,355 @@ jun.plot <- p193@meta.data %>%
         theme_bw() +
         labs(x='', y='Log(Jun TFA Score)') +
         theme(legend.position = 'none') +
-        ggtitle('Jun TFA')
+        ggtitle('Jun TFA') +
+        scale_fill_manual(values = c('green',
+                                      'orange',
+                                      'red'))
 
 gridExtra::grid.arrange(
-  spi1.plot,
-  jun.plot, 
+  spi1.plot.1h,
+  jun.plot.1h, 
   ncol=2
 )
 ```
 
 
 
-```{r, fig.height=12, eval=FALSE}
-p193.cdp <- subset(seurat.p193, progenitor=='CDP')
-anns <- p193.cdp@meta.data %>% 
-        select(Bystander)
-p193.cdp.ge <- p193.cdp@assays$RNA@scale.data %>%
-                  as.data.frame()
-targets <- rownames(p193.cdp.ge)[rownames(p193.cdp.ge) %in% spi1.regulon.top]
-p193.cdp.ge <- p193.cdp.ge[targets, ] 
+## 24 HPI analysis
 
-p193.cdp.ge <- t(p193.cdp.ge)
-## checking equal names and in the same order
-any(rownames(p193.cdp.ge) != rownames(anns))
-p193.cdp.ge <- cbind(p193.cdp.ge, anns)
+The next UMAP show for 24 hpi pooled cells across experimental conditions.
 
-p193.mean <- p193.cdp.ge %>%
-        group_by(Bystander) %>% 
-        summarise(across(everything(), list(mean = mean)))
-col_names <- p193.mean$Bystander
-p193.mean <- select(p193.mean, contains('mean')) %>% t()
-colnames(p193.mean) <- col_names
-rownames(p193.mean) <- gsub('_mean', '', rownames(p193.mean))
 
-p193.mean %>%
-        as.matrix() %>%
-        pheatmap()
+```{r, results='hide', fig.height=16, fig.width=12}
+## Modify here
+seurat.24 <- subset(seurat, 
+                    disease_state %in% c('Yesinia 24h post-infection',
+                                       'Yesinia 22h post-infection'))
+
+#seurat.p193 <- subset(seurat, plate_number=='P193')
+
+## normalization
+seurat.24 <- NormalizeData(seurat.24) %>% 
+                  ScaleData() %>%
+                        RunPCA(npcs = 30) %>%
+                        RunUMAP(dims=1:20)
+
+
+disease.state.24 <- seurat.24 %>%
+        DimPlot(group.by = 'disease_state', pt.size = 3) + 
+        theme(legend.position = 'top') +
+        ggtitle('Disease State')
+
+bacteria.24 <- seurat.24 %>%
+        DimPlot(group.by = 'bacteria_attached', 
+                pt.size = 3,
+                label = TRUE,
+                repel = TRUE) + 
+        ggtitle('Bacteria')
+
+treatment.24 <- seurat.24 %>%
+        DimPlot(group.by = 'treatment', 
+                pt.size = 3) +
+        ggtitle('Treatment')
+
+progenitor.24 <- seurat.24 %>%
+        DimPlot(group.by = 'progenitor', 
+                pt.size = 3) +
+        ggtitle('Progenitor')
+        
+sample_type.24 <- seurat.24 %>%
+        DimPlot(group.by = 'Bystander', 
+                pt.size = 3,
+                cols = c('orange', 'red', 'green')) +
+        ggtitle('Infection status')
+        
+plate.24 <- seurat.24 %>%
+        DimPlot(group.by = 'plate_number', 
+                pt.size = 3) +
+        ggtitle('Plate')
+
+gridExtra::grid.arrange(
+  grobs = list(disease.state.24, 
+               bacteria.24, 
+               treatment.24, 
+               progenitor.24,
+               sample_type.24,
+               plate.24),
+  ncol = 2
+)
+
 ```
+
+## Correlation analysis (24 hpi)
+
+
+
+
+* CDP 
+
+```{r, scores_24_only}
+#################################################################################
+## CDPs
+cdp.24 <- subset(seurat.24, progenitor == 'CDP')
+anns <- cdp.24@meta.data %>% 
+        select(Bystander, 
+               disease_state)
+
+## Correlation
+cdp.24.mtx <- cdp.24@assays$RNA@scale.data[VariableFeatures(seurat.p193), ] %>% 
+        cor(method = 'spearman')
+diag(cdp.24.mtx) <- 0
+
+## Heatmap
+cdp.24.heatmap <- pheatmap(cdp.24.mtx, 
+         annotation_col = anns,
+         annotation_colors = list(Bystander=c(`Infected`='red',
+                                              `Bystander`='orange',
+                                              `Mock-Infected`='green'),
+                                  disease_state=c(`Yesinia 22h post-infection`='salmon',
+                                                  `Yesinia 24h post-infection`='steelblue')), 
+         show_rownames = FALSE,
+         show_colnames = FALSE, 
+         color = viridis(20)
+)
+cdp.24.heatmap
+```
+
+Two main clusters can be observed in the heatmap which can be associated to the
+time points, being 22 and 24 hpi concentrated at the right and left, respectively.
+It can also be appreciated that most of the infected cells are present at the
+cluster corresponding to 24 hpi, which is in line with more activation at later 
+time points. We also see that 22 hpi bystander cells cluster together with 
+Mock-infected cells which agrees with the results observed using single cells.
+
+### Using all cells (22 and 24 hpi)
+
+```{r, scoring_regulons_boxplots_all, fig.width=12, fig.height=6}
+seurat.24.all <- AddModuleScore(seurat.24, 
+                       features = list(spi1.regulon.top), 
+                       name = 'spi1_regulon', 
+                       nbin = 3, 
+                       ctrl = 10, 
+                       seed = 333)
+seurat.24.all@meta.data$Bystander <- factor(seurat.24.all@meta.data$Bystander,
+                                   levels = c('Mock-Infected',
+                                              'Bystander',
+                                              'Infected'))
+spi1.plot.all <- seurat.24.all@meta.data %>%
+        ggplot(aes(x=Bystander, 
+                   y=log(spi1_regulon1),
+                   fill=Bystander)) +
+                geom_boxplot() +
+                geom_jitter() +
+                facet_wrap(~progenitor, 
+                           scales = 'free') +
+        theme_bw() +
+        labs(x='', y='Log(Spi1 TFA Score)') +
+        theme(legend.position = 'none') +
+        ggtitle('Spi1 TFA') +
+        scale_fill_manual(values = c('green',
+                                      'orange',
+                                      'red'))
+
+## Using the highest spi1 motif
+jun.regulon.df.top <- filter(regulons, TF == 'Jun') %>%
+                    arrange(desc(X)) %>% 
+                       head(1)
+jun.regulon.top <- extract_targets(jun.regulon.df.top$X.7)
+
+#seurat.24.all <- subset(seurat, plate_number=='seurat.24.all')
+seurat.24.all <- AddModuleScore(seurat.24.all, 
+                       features = list(jun.regulon.top), 
+                       name = 'jun_regulon', 
+                       nbin = 3, 
+                       ctrl = 10, 
+                       seed = 333)
+
+seurat.24.all@meta.data$Bystander <- factor(seurat.24.all@meta.data$Bystander,
+                                   levels = c('Mock-Infected',
+                                              'Bystander',
+                                              'Infected'))
+
+jun.plot.all <- seurat.24.all@meta.data %>%
+        ggplot(aes(x=Bystander, 
+                   y=log(jun_regulon1),
+                   fill=Bystander)) +
+                geom_boxplot() +
+                geom_jitter() +
+                facet_wrap(~progenitor, 
+                           scales = 'free') +
+        theme_bw() +
+        labs(x='', y='Log(Jun TFA Score)') +
+        theme(legend.position = 'none') +
+        ggtitle('Jun TFA') +
+        scale_fill_manual(values = c('green',
+                                      'orange',
+                                      'red'))
+
+gridExtra::grid.arrange(
+  spi1.plot.all,
+  jun.plot.all, 
+  ncol=2
+)
+```
+
+
+## Scoring cells 24 hpi
+
+
+```{r, scoring_regulons_24hpi, fig.width=12, fig.height=6}
+seurat.24 <- subset(seurat.24, disease_state == 'Yesinia 24h post-infection')
+seurat.24 <- AddModuleScore(seurat.24, 
+                       features = list(spi1.regulon.top), 
+                       name = 'spi1_regulon', 
+                       nbin = 3, 
+                       ctrl = 10, 
+                       seed = 333)
+seurat.24@meta.data$Bystander <- factor(seurat.24@meta.data$Bystander,
+                                   levels = c('Mock-Infected',
+                                              'Bystander',
+                                              'Infected'))
+spi1.plot.24h <- seurat.24@meta.data %>%
+        ggplot(aes(x=Bystander, 
+                   y=log(spi1_regulon1),
+                   fill=Bystander)) +
+                geom_boxplot() +
+                geom_jitter() +
+                facet_wrap(~progenitor, 
+                           scales = 'free') +
+        theme_bw() +
+        labs(x='', y='Log(Spi1 TFA Score)') +
+        theme(legend.position = 'none') +
+        ggtitle('Spi1 TFA') +
+        scale_fill_manual(values = c('green',
+                                      'orange',
+                                      'red'))
+
+## Using the highest spi1 motif
+jun.regulon.df.top <- filter(regulons, TF == 'Jun') %>%
+                    arrange(desc(X)) %>% 
+                       head(1)
+jun.regulon.top <- extract_targets(jun.regulon.df.top$X.7)
+
+#seurat.24 <- subset(seurat, plate_number=='seurat.24')
+seurat.24 <- AddModuleScore(seurat.24, 
+                       features = list(jun.regulon.top), 
+                       name = 'jun_regulon', 
+                       nbin = 3, 
+                       ctrl = 10, 
+                       seed = 333)
+
+seurat.24@meta.data$Bystander <- factor(seurat.24@meta.data$Bystander,
+                                   levels = c('Mock-Infected',
+                                              'Bystander',
+                                              'Infected'))
+
+jun.plot.24h <- seurat.24@meta.data %>%
+        ggplot(aes(x=Bystander, 
+                   y=log(jun_regulon1),
+                   fill=Bystander)) +
+                geom_boxplot() +
+                geom_jitter() +
+                facet_wrap(~progenitor, 
+                           scales = 'free') +
+        theme_bw() +
+        labs(x='', y='Log(Jun TFA Score)') +
+        theme(legend.position = 'none') +
+        ggtitle('Jun TFA') +
+        scale_fill_manual(values = c('green',
+                                      'orange',
+                                      'red'))
+
+gridExtra::grid.arrange(
+  spi1.plot.24h,
+  jun.plot.24h, 
+  ncol=2
+)
+```
+
+```{r, scoring_regulons_boxplots, fig.width=12, fig.height=6}
+
+seurat.24 <- AddModuleScore(seurat.24, 
+                       features = list(spi1.regulon.top), 
+                       name = 'spi1_regulon', 
+                       nbin = 3, 
+                       ctrl = 10, 
+                       seed = 333)
+seurat.24@meta.data$Bystander <- factor(seurat.24@meta.data$Bystander,
+                                   levels = c('Mock-Infected',
+                                              'Bystander',
+                                              'Infected'))
+spi1.plot.24h <- seurat.24@meta.data %>%
+        ggplot(aes(x=Bystander, 
+                   y=log(spi1_regulon1),
+                   fill=Bystander)) +
+                geom_boxplot() +
+                geom_jitter() +
+                facet_wrap(~progenitor, 
+                           scales = 'free') +
+        theme_bw() +
+        labs(x='', y='Log(Spi1 TFA Score)') +
+        theme(legend.position = 'none') +
+        ggtitle('Spi1 TFA') +
+        scale_fill_manual(values = c('green',
+                                      'orange',
+                                      'red'))
+
+## Using the highest spi1 motif
+jun.regulon.df.top <- filter(regulons, TF == 'Jun') %>%
+                    arrange(desc(X)) %>% 
+                       head(1)
+jun.regulon.top <- extract_targets(jun.regulon.df.top$X.7)
+
+#seurat.24 <- subset(seurat, plate_number=='seurat.24')
+seurat.24 <- AddModuleScore(seurat.24, 
+                       features = list(jun.regulon.top), 
+                       name = 'jun_regulon', 
+                       nbin = 3, 
+                       ctrl = 10, 
+                       seed = 333)
+
+seurat.24@meta.data$Bystander <- factor(seurat.24@meta.data$Bystander,
+                                   levels = c('Mock-Infected',
+                                              'Bystander',
+                                              'Infected'))
+
+jun.plot.24h <- seurat.24@meta.data %>%
+        ggplot(aes(x=Bystander, 
+                   y=log(jun_regulon1),
+                   fill=Bystander)) +
+                geom_boxplot() +
+                geom_jitter() +
+                facet_wrap(~progenitor, 
+                           scales = 'free') +
+        theme_bw() +
+        labs(x='', y='Log(Jun TFA Score)') +
+        theme(legend.position = 'none') +
+        ggtitle('Jun TFA') +
+        scale_fill_manual(values = c('green',
+                                      'orange',
+                                      'red'))
+
+gridExtra::grid.arrange(
+  spi1.plot.24h,
+  jun.plot.24h, 
+  ncol=2
+)
+```
+
+
+## Scores all time points
+
+```{r, scores_1_n_24_hpi, fig.width=12, fig.height=8}
+gridExtra::grid.arrange(
+  spi1.plot.1h,
+  jun.plot.1h,
+  spi1.plot.24h,
+  jun.plot.24h,
+  ncol=2
+)
+```
+
 
 ## Differential Expression Analysis
 
