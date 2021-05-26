@@ -1532,7 +1532,161 @@ It can be seen that Jun is more active in the infected cells compared to bystand
 and non-infected mock cells.
 
 
+# Evaluation of CDP and MDP potential along trajectories
+
+```{r, cdp_mdp_signatures}
+myeloid.sign <- read_xlsx('data/gene signatures of DCs and monocytes.xlsx')
+
+## Processing gene names
+dc.signature <- myeloid.sign$DCs[2:nrow(myeloid.sign)]
+dc.signature <- sapply(dc.signature, 
+                           function(x) 
+                             paste0(toupper(substr(x, 1, 1)),
+                                    substr(x, 2, nchar(x))))
+mono.signature <- myeloid.sign$monocytes[2:nrow(myeloid.sign)]
+mono.signature <- mono.signature[!is.na(mono.signature)]
+mono.signature <- sapply(mono.signature, 
+                           function(x) 
+                             paste0(toupper(substr(x, 1, 1)),
+                                    substr(x, 2, nchar(x))))
+
+
+## Scoring cells 
+
+## Getting cells in the diffusion maps
+dm.cells <- lapply(dif.maps, rownames) %>%
+               unlist() %>%
+                 unname()
+seurat.dm <- subset(sc.seurat, well %in% dm.cells)
+seurat.dm <- AddModuleScore(seurat.dm, 
+                            features = list(dendritic=dc.signature,
+                                            monocyte=mono.signature), 
+                            name = c('dendritic_signature', 
+                                     'monocyte_signature'), 
+                            nbin = 5)
+
+dc.sign.vln <- VlnPlot(seurat.dm, 
+        group.by = 'Bystander', 
+        features = 'dendritic_signature1') +
+        NoLegend() + xlab('') +
+        ggtitle('Dendritic Signature')
+
+mono.sign.vln <- VlnPlot(seurat.dm, 
+        group.by = 'Bystander', 
+        features = 'monocyte_signature2') +
+       NoLegend() + xlab('') +
+      ggtitle('Monocyte Signature')
+
+#gridExtra::grid.arrange(dc.sign.vln, 
+#                        mono.sign.vln, ncol=2)
+```
+
+### Dendritic signature
+
+
+```{r, scores_in_diffusion_dendritic, fig.width=12, fig.height=8}
+## Adding scores to diffusion maps
+dif.maps <- lapply(dif.maps, 
+          function(df) {
+            df$'dendritic_signature' <- seurat.dm@meta.data[rownames(df),
+                                                           'dendritic_signature1']
+           df$'monocyte_signature' <- seurat.dm@meta.data[rownames(df),
+                                                           'monocyte_signature2'] 
+           df
+})
+
+cdp.1hp.dc <- dif.maps[1][[1]] %>%
+  ggplot(aes(x=DC1, y=-DC2,
+             colour=`dendritic_signature`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(dif.maps)[1])
+
+mdp.1hp.dc <- dif.maps[2][[1]] %>%
+  ggplot(aes(x=DC1, y=DC2,
+             colour=`dendritic_signature`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(dif.maps)[2])
+
+cdp.24hp.dc <- dif.maps[3][[1]] %>%
+  ggplot(aes(x=DC1, y=DC2,
+             colour=`dendritic_signature`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(dif.maps)[3])
+
+mdp.24hp.dc <- dif.maps[4][[1]] %>%
+  ggplot(aes(x=DC1, y=-DC2,
+             colour=`dendritic_signature`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(dif.maps)[4])
+
+gridExtra::grid.arrange(
+  cdp.1hp.dc,
+  mdp.1hp.dc,
+  cdp.24hp.dc,
+  mdp.24hp.dc,
+  ncol=2
+)
+
+
+     
+```
+
+### Monocyte signature
+
+```{r, scores_in_diffusion_monocyte, fig.width=12, fig.height=8}
+
+cdp.1hp.mono <- dif.maps[1][[1]] %>%
+  ggplot(aes(x=DC1, y=-DC2,
+             colour=`monocyte_signature`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(dif.maps)[1])
+
+mdp.1hp.mono <- dif.maps[2][[1]] %>%
+  ggplot(aes(x=DC1, y=DC2,
+             colour=`monocyte_signature`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(dif.maps)[2])
+
+cdp.24hp.mono <- dif.maps[3][[1]] %>%
+  ggplot(aes(x=DC1, y=DC2,
+             colour=`monocyte_signature`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(dif.maps)[3])
+
+mdp.24hp.mono <- dif.maps[4][[1]] %>%
+  ggplot(aes(x=DC1, y=-DC2,
+             colour=`monocyte_signature`)) +
+      geom_point(size=3) +
+      scale_color_viridis() +
+      theme_classic() +
+      ggtitle(names(dif.maps)[4])
+
+gridExtra::grid.arrange(
+  cdp.1hp.mono,
+  mdp.1hp.mono,
+  cdp.24hp.mono,
+  mdp.24hp.mono,
+  ncol=2
+)
+```
+
+
 # Comparing CDP vs MDP responses 
+
 
 We compared responses in CDP vs MDP derived DCs. DEA was performed for infected,
 bystander and mock-infected cells at 1 and 24 hpi separately.
